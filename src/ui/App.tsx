@@ -8,6 +8,7 @@ import Search from './pages/Search';
 import Tasks from './pages/Tasks';
 import MarkdownPreview from './pages/MarkdownPreview';
 import Help from './pages/Help';
+import Settings from './pages/Settings';
 import AgentDetail from './pages/AgentDetail';
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/search" element={<Search />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/help" element={<Help />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
   );

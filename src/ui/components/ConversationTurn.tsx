@@ -18,10 +18,11 @@ interface ConversationTurnProps {
   messages: Message[];
   turnNumber: number;
   showThinking: boolean;
+  collapseThreshold?: number;
   onToolClick?: (toolCall: { id: string; name: string; input: any; result?: any; isError?: boolean }) => void;
 }
 
-export default function ConversationTurn({ messages, turnNumber, showThinking, onToolClick }: ConversationTurnProps) {
+export default function ConversationTurn({ messages, turnNumber, showThinking, collapseThreshold, onToolClick }: ConversationTurnProps) {
   if (messages.length === 0) return null;
 
   return (
@@ -49,6 +50,7 @@ export default function ConversationTurn({ messages, turnNumber, showThinking, o
             key={msg.uuid || i}
             message={msg}
             showThinking={showThinking}
+            collapseThreshold={collapseThreshold}
             onToolClick={onToolClick}
           />
         ))}

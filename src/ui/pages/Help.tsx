@@ -46,11 +46,13 @@ export default function Help() {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'projects', label: 'Projects & Timeline' },
     { id: 'sessions', label: 'Session Detail' },
+    { id: 'collapsible', label: 'Collapsible Content' },
     { id: 'context-panel', label: 'Context Panel' },
     { id: 'analytics', label: 'Analytics' },
     { id: 'search', label: 'Search' },
     { id: 'tasks', label: 'Tasks' },
     { id: 'export', label: 'Export' },
+    { id: 'settings', label: 'Settings' },
     { id: 'shortcuts', label: 'Keyboard Shortcuts' },
     { id: 'data-privacy', label: 'Data & Privacy' },
     { id: 'cost', label: 'Cost Estimation' },
@@ -131,6 +133,7 @@ export default function Help() {
         </ul>
         <P>
           The sidebar always shows all projects sorted by last activity with a filter input to narrow the list.
+          Settings and Help links are pinned at the bottom of the sidebar.
         </P>
       </Section>
 
@@ -149,7 +152,13 @@ export default function Help() {
           </li>
           <li>
             <strong style={{ color: 'var(--color-text)' }}>Thinking Blocks</strong> — Collapsible sections showing Claude's reasoning.
-            Toggle all at once with the "Show/Hide Thinking" button in the header.
+            Toggle all at once with the "Show/Hide Thinking" button in the header. The default state
+            can be configured in Settings.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Collapsible Messages</strong> — Long user and assistant messages are automatically
+            collapsed with a gradient fade and "Show more" toggle. A sticky "Show less" pill appears when scrolling
+            through expanded content. Threshold is configurable in Settings.
           </li>
           <li>
             <strong style={{ color: 'var(--color-text)' }}>Tool Calls</strong> — Collapsible sections showing tool invocations and results.
@@ -165,6 +174,36 @@ export default function Help() {
           </li>
           <li>
             <strong style={{ color: 'var(--color-text)' }}>Session Navigation</strong> — Press <kbd className="inline-block px-1.5 py-0.5 rounded text-xs font-mono" style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>[</kbd> and <kbd className="inline-block px-1.5 py-0.5 rounded text-xs font-mono" style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>]</kbd> to navigate between sessions within the same project.
+          </li>
+        </ul>
+      </Section>
+
+      <Section id="collapsible" title="Collapsible Content">
+        <P>
+          Long messages are automatically collapsed to keep conversations scannable. Both user and assistant
+          text content are collapsed when they exceed a configurable height threshold (default 300px).
+        </P>
+        <ul className="list-disc pl-5 space-y-1.5" style={{ color: 'var(--color-text-muted)' }}>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Auto-collapse</strong> — Messages taller than the threshold
+            are collapsed with a gradient fade-out at the bottom and a "Show more (N lines)" button.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Show more / Show less</strong> — Click to expand or collapse.
+            The transition animates smoothly.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Sticky collapse pill</strong> — When you expand a very long message
+            and scroll through it, a sticky "Show less" pill appears at the top so you can collapse without
+            scrolling back down. Collapsing also scrolls you back to the start of the message.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Configurable threshold</strong> — Adjust the collapse height
+            in <a href="/settings" style={{ color: 'var(--color-primary)' }}>Settings</a>, or set it to 0 to disable collapsing entirely.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Independent of other collapsibles</strong> — Thinking blocks and
+            tool calls have their own collapse behavior and are not affected by this setting.
           </li>
         </ul>
       </Section>
@@ -247,6 +286,34 @@ export default function Help() {
         </ul>
       </Section>
 
+      <Section id="settings" title="Settings">
+        <P>
+          The Settings page lets you configure your clarc experience. Open it from the sidebar or
+          navigate to <code>/settings</code>.
+        </P>
+        <ul className="list-disc pl-5 space-y-1.5" style={{ color: 'var(--color-text-muted)' }}>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Theme</strong> — Switch between System (follows your OS), Light,
+            and Dark mode. The theme is applied immediately.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Auto-collapse threshold</strong> — Control when long messages are collapsed.
+            Default is 300px. Set to 0 to disable collapsing.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Show thinking by default</strong> — Whether thinking blocks are
+            visible when you open a session. You can always toggle per-session using the header button.
+          </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Data info</strong> — View your source directory, data directory,
+            sync interval, and server port.
+          </li>
+        </ul>
+        <P>
+          All settings are stored in your browser's localStorage and persist across sessions.
+        </P>
+      </Section>
+
       <Section id="shortcuts" title="Keyboard Shortcuts">
         <P>
           Press <kbd className="inline-block px-1.5 py-0.5 rounded text-xs font-mono" style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>?</kbd> at
@@ -275,7 +342,8 @@ export default function Help() {
           <li>
             <strong style={{ color: 'var(--color-text)' }}>Data sync</strong> — At startup and every 5 minutes, clarc copies session files
             from <code>~/.claude/</code> to <code>~/.config/clarc/data/</code>. This is add-only (files are never deleted from the local copy,
-            preserving history even if the source prunes old sessions).
+            preserving history even if the source prunes old sessions). These paths are visible on
+            the <a href="/settings" style={{ color: 'var(--color-primary)' }}>Settings</a> page.
           </li>
           <li>
             <strong style={{ color: 'var(--color-text)' }}>What's read</strong> — Session JSONL files, todo JSON files, <code>stats-cache.json</code>,

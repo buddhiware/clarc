@@ -12,15 +12,17 @@
    - [Dashboard](#dashboard)
    - [Projects](#projects)
    - [Session Detail](#session-detail)
+   - [Collapsible Content](#collapsible-content)
    - [Context Panel](#context-panel)
    - [Analytics](#analytics)
    - [Search](#search)
    - [Tasks](#tasks)
    - [Markdown Preview & Export](#markdown-preview--export)
+   - [Settings](#settings)
 4. [Data Sync](#data-sync)
 5. [Command-Line Interface](#command-line-interface)
 6. [Keyboard Shortcuts](#keyboard-shortcuts)
-7. [Dark Mode](#dark-mode)
+7. [Dark Mode & Theming](#dark-mode--theming)
 8. [Configuration](#configuration)
 9. [How It Works](#how-it-works)
 10. [Help Page](#help-page)
@@ -101,7 +103,8 @@ The home page shows an overview of your entire Claude Code history:
 The left sidebar is always visible and shows:
 
 - **clarc Logo** -- The word "clarc" rendered with a text-gradient effect at the top of the sidebar
-- **Navigation Links** -- Dashboard, Analytics, Search, Tasks, Help -- each with an icon alongside the label
+- **Navigation Links** -- Dashboard, Analytics, Search, Tasks -- each with an icon alongside the label
+- **Bottom Links** -- Settings and Help & Guide pinned at the bottom of the sidebar
 - **Filter** -- Type to filter projects by name
 - **Project List** -- All projects sorted by last activity, showing:
   - Project name
@@ -172,6 +175,7 @@ Messages are grouped into **Conversation Turns**. A turn consists of one user me
    - Tables
    - Lists
    - Links
+   - Auto-collapsed if taller than the collapse threshold (see [Collapsible Content](#collapsible-content))
 
 3. **Tool calls** (collapsible, collapsed by default)
    - Per-tool icons for quick visual identification:
@@ -200,6 +204,16 @@ A small floating pill appears in the bottom-right corner of the viewport. It pro
 #### Keyboard Navigation
 
 While viewing a session, press `[` to go to the previous session in the same project or `]` to go to the next session. This allows rapid browsing without returning to the project timeline.
+
+### Collapsible Content
+
+Long messages are automatically collapsed to keep conversations easy to scan. Both user and assistant text content are collapsed when they exceed a configurable height threshold (default 300px).
+
+- **Auto-collapse** -- Messages taller than the threshold show a gradient fade-out at the bottom and a "Show more (N lines)" button.
+- **Smooth expand/collapse** -- Clicking "Show more" expands the content with a smooth animation. "Show less" collapses it back.
+- **Sticky "Show less" pill** -- When you expand a very long message and scroll through it, a sticky pill appears at the top of the block (just below the glass header) so you can collapse without scrolling all the way down. Collapsing also scrolls you back to the start of the message.
+- **Configurable** -- Adjust the collapse height threshold in [Settings](#settings), or set it to 0 to disable collapsing entirely.
+- **Independent** -- Thinking blocks and tool calls have their own built-in collapse behavior and are not affected by this setting.
 
 ### Context Panel
 
@@ -368,6 +382,30 @@ estimated_cost_usd: 0.87
   - Full text content
   - Tool calls in `<details>` blocks with JSON input/result (if included)
 
+### Settings
+
+The Settings page (`/settings`) lets you configure your clarc experience. Access it from the sidebar.
+
+#### Display
+
+- **Theme** -- Switch between System (follows your OS preference), Light, and Dark mode. Applied immediately.
+- **Auto-collapse threshold** -- Control when long messages are collapsed (default 300px). Adjust with the slider, or set to 0 to disable collapsing entirely.
+- **Show thinking by default** -- Whether thinking blocks are visible when you open a session. You can always toggle per-session using the header button.
+
+#### Data
+
+Read-only display of runtime information:
+- **Source directory** -- Where Claude Code stores session data (e.g. `~/.claude`)
+- **Data directory** -- Where clarc stores its synced copy
+- **Sync interval** -- How often clarc checks for new data
+- **Server port** -- The port clarc is running on
+
+#### About
+
+Version info and a link to the Help page.
+
+**Note:** All settings are stored in your browser's localStorage and persist across browser sessions.
+
 ---
 
 ## Data Sync
@@ -478,13 +516,15 @@ Press `?` at any time to see the shortcuts overlay.
 
 ---
 
-## Dark Mode
+## Dark Mode & Theming
 
-clarc automatically follows your system's color scheme preference:
-- **Light mode** when your OS is set to light
-- **Dark mode** when your OS is set to dark
+clarc supports three theme modes, configurable from the [Settings](#settings) page:
 
-The theme switches automatically based on your system setting.
+- **System** (default) -- Follows your OS color scheme preference automatically
+- **Light** -- Forces light mode regardless of OS setting
+- **Dark** -- Forces dark mode regardless of OS setting
+
+The theme is applied via a `data-theme` attribute on the HTML element and takes effect immediately.
 
 **Color scheme:**
 
@@ -498,7 +538,7 @@ The theme switches automatically based on your system setting.
 | Tool calls | Green 50 | Green 950 |
 | Errors | Red 50 | Red 950 |
 
-In v0.2, gradient backgrounds and glass effects (frosted blur on headers, panels, and search bars) adapt to the active color scheme. Gradients shift to darker tones in dark mode, and glass blur effects adjust their background opacity accordingly.
+Gradient backgrounds and glass effects (frosted blur on headers, panels, and search bars) adapt to the active color scheme. Gradients shift to darker tones in dark mode, and glass blur effects adjust their background opacity accordingly.
 
 ---
 
@@ -628,6 +668,8 @@ clarc includes an in-app help page available at `/help` or via the Help link in 
 
 The help page covers:
 - **Feature overview** -- Descriptions of every major section of the app
+- **Collapsible content** -- How auto-collapse works and how to configure it
+- **Settings** -- Theme, collapse threshold, default thinking visibility, and data paths
 - **Keyboard shortcuts** -- Full reference table
 - **Data privacy** -- How clarc handles your data, what it reads, and what it never touches
 - **Cost estimation** -- How costs are calculated and why they may differ from your actual bill

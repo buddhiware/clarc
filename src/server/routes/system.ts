@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getIndex, reindex } from '../../data/scanner';
-import { SOURCE_DIR, CONFIG_DIR, DATA_DIR } from '../../shared/paths';
+import { SOURCE_DIR, CONFIG_DIR, DATA_DIR, PORT, SYNC_INTERVAL_MS } from '../../shared/paths';
 import { getSyncStatus } from '../../data/sync';
 import { runSync } from '../../data/sync';
 
@@ -44,6 +44,17 @@ app.post('/reindex', async (c) => {
     status: 'reindexed',
     lastIndexedAt: index.lastIndexedAt,
     projectCount: index.projects.length,
+  });
+});
+
+// GET /api/settings/info — runtime info for the settings page
+app.get('/settings/info', (c) => {
+  return c.json({
+    sourceDir: SOURCE_DIR,
+    dataDir: DATA_DIR,
+    syncIntervalMs: SYNC_INTERVAL_MS,
+    port: PORT,
+    version: '0.2.0',
   });
 });
 

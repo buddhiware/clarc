@@ -81,7 +81,7 @@ clarc is a full-stack TypeScript application with five layers:
 | Typography | Inter (UI), JetBrains Mono (code) | Google Fonts loaded in `index.html` |
 | Markdown | react-markdown, remark-gfm | Renders markdown content |
 | Charts | Recharts 2.x | Data visualization (6 chart types wired across Dashboard and Analytics) |
-| Icons | Custom inline SVGs (`Icons.tsx`) | ~25 icons, no external icon library |
+| Icons | Custom inline SVGs (`Icons.tsx`) | ~30 icons, no external icon library |
 | CLI | Commander 13 | Command-line interface |
 | Build | Vite 6.x | Frontend bundling and HMR |
 | Container | Docker + Docker Compose | Isolated development environment |
@@ -228,7 +228,7 @@ ClArc/
 │   │       ├── analytics.ts      # GET /api/analytics[/model-usage|cost|heatmap]
 │   │       ├── search.ts         # GET /api/search?q=...
 │   │       ├── export.ts         # GET /api/export/session/:id[/preview]
-│   │       ├── system.ts         # GET /api/status, POST /api/reindex (syncs before reindex)
+│   │       ├── system.ts         # GET /api/status, GET /api/settings/info, POST /api/reindex
 │   │       └── sync.ts           # GET /api/sync/status, POST /api/sync
 │   │
 │   ├── cli/                      # Command-line interface
@@ -243,16 +243,18 @@ ClArc/
 │       ├── hooks/
 │       │   ├── useApi.ts         # Fetch wrapper with loading/error states
 │       │   ├── useKeyboard.ts    # Global keyboard shortcut handler
+│       │   ├── useSettings.ts    # localStorage-backed settings (theme, collapse, thinking)
 │       │   └── useSessionNavigation.ts  # [ ] navigation between sessions
 │       ├── components/
 │       │   ├── Layout.tsx        # App shell (sidebar + main + overlays + context panel)
 │       │   ├── Sidebar.tsx       # Project navigation (text-gradient logo, nav icons)
 │       │   ├── MessageRenderer.tsx # Core message display (avatars, bubbles, cost badges)
+│       │   ├── CollapsibleContent.tsx # Generic height-based collapse with sticky pill
 │       │   ├── ThinkingBlock.tsx  # Collapsible thinking (animated, gradient border)
 │       │   ├── ToolCallBlock.tsx  # Collapsible tool call (per-tool icons, panel support)
 │       │   ├── CodeBlock.tsx      # Code block (macOS dots, copy animation)
 │       │   ├── KeyboardShortcuts.tsx # Shortcut overlay (backdrop blur, scaleIn, key styling)
-│       │   ├── Icons.tsx          # ~25 inline SVG icons (no external library)
+│       │   ├── Icons.tsx          # ~30 inline SVG icons (no external library)
 │       │   ├── Skeleton.tsx       # Shimmer loading placeholders
 │       │   ├── PageTransition.tsx # Route-keyed fadeInUp animation wrapper
 │       │   ├── StatCard.tsx       # Gradient-bordered stat cards
@@ -274,7 +276,8 @@ ClArc/
 │           ├── Search.tsx         # Glass search bar, staggered results
 │           ├── Tasks.tsx          # Colored column headers, pulsing blocked dots
 │           ├── MarkdownPreview.tsx # Glass toolbar, toggle switches
-│           └── Help.tsx           # In-app help/guide page
+│           ├── Help.tsx           # In-app help/guide page
+│           └── Settings.tsx       # Settings page (theme, collapse, thinking, data info)
 │
 └── dist-binary/                  # Compiled binary output
     └── clarc                     # Single standalone executable
@@ -706,6 +709,7 @@ The response includes:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/status` | Health check, index stats, sync info, directory paths |
+| GET | `/api/settings/info` | Runtime info (sourceDir, dataDir, syncIntervalMs, port, version) |
 | POST | `/api/reindex` | Sync (unless `?sync=false`) then re-scan data directory |
 
 ### Adding a New API Route
@@ -746,6 +750,7 @@ The response includes:
 | `/search` | `Search` | Glass search bar, staggered result cards |
 | `/tasks` | `Tasks` | Colored column headers, pulsing blocked dots |
 | `/help` | `Help` | In-app help and usage guide |
+| `/settings` | `Settings` | Theme, collapse threshold, thinking default, data paths |
 
 ### Hooks
 
@@ -767,6 +772,20 @@ Registers global keyboard handlers:
 - `Escape` — Close context panel (priority), or close help overlay
 - Ignores keypresses when focused in input/textarea fields
 
+#### `useSettings()`
+
+Manages user preferences stored in localStorage under `clarc-settings`:
+
+```typescript
+const [settings, updateSettings] = useSettings();
+// settings: { theme: 'system'|'light'|'dark', collapseThreshold: number, defaultShowThinking: boolean }
+// updateSettings({ theme: 'dark' })  // partial updates, persisted immediately
+```
+
+- **Theme**: Applies `data-theme` attribute on `<html>` element. `'system'` removes the attribute (falls back to media query), `'light'`/`'dark'` force the mode.
+- **Collapse threshold**: Passed to `CollapsibleContent` via `ConversationTurn` → `MessageRenderer`. Set to `0` to disable.
+- **Default show thinking**: Read by `SessionDetail` and `AgentDetail` for initial `showThinking` state.
+
 #### `useSessionNavigation(projectId, currentSessionId)`
 
 Enables `[` and `]` keyboard shortcuts to navigate between sessions within the same project:
@@ -787,6 +806,7 @@ Used by `SessionDetail` to allow sequential session browsing.
 
 | Component | File | Description |
 |-----------|------|-------------|
+| `CollapsibleContent` | `CollapsibleContent.tsx` | Generic height-based collapse with gradient fade and sticky "Show less" pill |
 | `Skeleton` | `Skeleton.tsx` | Shimmer loading placeholders using the `.skeleton` CSS class |
 | `PageTransition` | `PageTransition.tsx` | Route-keyed `fadeInUp` animation wrapper for page content |
 | `StatCard` | `StatCard.tsx` | Gradient-bordered stat cards for dashboard metrics |
@@ -818,18 +838,19 @@ The app shell. Renders:
 
 - **Header**: "clarc" logo with `text-gradient` animation + collapse button
 - **Filter**: Text input to filter projects
-- **Navigation**: Dashboard, Analytics, Search, Tasks, Help links with icons and active accent bar
+- **Navigation**: Dashboard, Analytics, Search, Tasks links with icons and active accent bar
 - **Project list**: Sorted by activity, shows name, session count, message count, time ago; hover reveals chevron
+- **Bottom links**: Settings (gear icon) and Help & Guide (help circle icon) pinned at the bottom
 
 ##### `MessageRenderer.tsx`
 
 The core message display component. Handles:
-- **User messages**: Avatar circle, bubble card, cleans command tags, renders markdown
-- **Assistant messages**: Avatar circle, renders thinking blocks, text content (markdown), tool calls with cost badges
+- **User messages**: Avatar circle, bubble card, cleans command tags, renders markdown in `CollapsibleContent`
+- **Assistant messages**: Avatar circle, renders thinking blocks, text content (markdown in `CollapsibleContent`), tool calls with cost badges
 - **Tool messages**: Skipped (results shown inline with assistant)
 - **Meta messages**: Skipped
 
-Props include `onToolClick` for opening tool details in the context panel.
+Props include `onToolClick` for opening tool details in the context panel and `collapseThreshold` for controlling auto-collapse height.
 
 ##### `ThinkingBlock.tsx`
 
@@ -877,6 +898,8 @@ All pages now include skeleton loading states (using `Skeleton` components) whil
 - **Search**: Glass search bar, staggered result card animations
 - **Tasks**: Colored column headers per status, pulsing dot for blocked tasks
 - **MarkdownPreview**: Glass toolbar, toggle switches for thinking/tools inclusion
+- **Settings**: Theme toggle (segmented control), collapse threshold slider, thinking default toggle, server info display
+- **Help**: Table of contents, feature sections, keyboard shortcuts, cost table
 
 ### Adding a New Page
 
@@ -1068,9 +1091,21 @@ The design system is defined entirely in `src/ui/styles/globals.css` using CSS c
 --blur-sm (8px) / --blur-md (16px) / --blur-lg (24px)
 ```
 
-### Dark Mode
+### Dark Mode & Theming
 
-All tokens are overridden in `@media (prefers-color-scheme: dark)` with appropriate dark values. No manual toggle exists — it follows the OS setting.
+Dark mode is supported via two mechanisms:
+
+1. **System preference** — `@media (prefers-color-scheme: dark)` applies dark tokens when the OS is in dark mode. This is excluded when `data-theme="light"` is set: `:root:not([data-theme="light"])`.
+2. **Manual override** — `[data-theme="dark"]` on the `<html>` element forces dark tokens regardless of OS setting.
+
+The `useSettings` hook manages the theme. Setting theme to `'system'` removes the `data-theme` attribute (falling back to the media query). Setting `'light'` or `'dark'` applies the corresponding attribute.
+
+**CSS structure:**
+```css
+:root { /* light tokens */ }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { /* dark tokens */ } }
+:root[data-theme="dark"] { /* dark tokens (forced) */ }
+```
 
 ### Keyframe Animations (15)
 

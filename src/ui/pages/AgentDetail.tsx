@@ -7,6 +7,7 @@ import ScrollNav from '../components/ScrollNav';
 import Badge from '../components/Badge';
 import { Skeleton, SkeletonGroup } from '../components/Skeleton';
 import { ChevronRightIcon, ZapIcon } from '../components/Icons';
+import { useSettings } from '../hooks/useSettings';
 
 interface AgentData {
   id: string;
@@ -47,7 +48,8 @@ export default function AgentDetail() {
   const { data: agent, loading, error } = useApi<AgentData>(
     `/sessions/agents/${encodeURIComponent(projectId || '')}/${encodeURIComponent(agentId || '')}`
   );
-  const [showThinking, setShowThinking] = useState(true);
+  const [settings] = useSettings();
+  const [showThinking, setShowThinking] = useState(settings.defaultShowThinking);
   const navigate = useNavigate();
 
   if (loading) return <AgentSkeleton />;
@@ -143,6 +145,7 @@ export default function AgentDetail() {
             messages={turnMsgs}
             turnNumber={i + 1}
             showThinking={showThinking}
+            collapseThreshold={settings.collapseThreshold || undefined}
           />
         ))}
       </div>

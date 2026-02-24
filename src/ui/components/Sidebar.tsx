@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import { GridIcon, BarChartIcon, SearchIcon, CheckSquareIcon, HelpCircleIcon, FolderIcon, ChevronRightIcon, SidebarIcon } from './Icons';
+import { GridIcon, BarChartIcon, SearchIcon, CheckSquareIcon, HelpCircleIcon, SettingsIcon, FolderIcon, ChevronRightIcon, SidebarIcon } from './Icons';
 
 interface ProjectSummary {
   id: string;
@@ -28,6 +28,7 @@ export default function Sidebar({ onToggle }: { onToggle: () => void }) {
   ) || [];
 
   const isHelpActive = location.pathname === '/help';
+  const isSettingsActive = location.pathname === '/settings';
 
   return (
     <div className="flex flex-col h-full">
@@ -147,8 +148,22 @@ export default function Sidebar({ onToggle }: { onToggle: () => void }) {
         })}
       </div>
 
-      {/* Help link — pinned at bottom, always visible */}
+      {/* Bottom links — pinned at bottom, always visible */}
       <div className="flex-shrink-0 border-t px-2 py-2" style={{ borderColor: 'var(--color-border)' }}>
+        <Link
+          to="/settings"
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm mb-0.5"
+          style={{
+            backgroundColor: isSettingsActive ? 'var(--color-surface-2)' : 'transparent',
+            color: isSettingsActive ? 'var(--color-text)' : 'var(--color-text-muted)',
+            fontWeight: isSettingsActive ? 500 : 400,
+            borderLeft: isSettingsActive ? '3px solid var(--color-primary)' : '3px solid transparent',
+            transition: 'all var(--duration-fast) ease',
+          }}
+        >
+          <SettingsIcon size={16} />
+          Settings
+        </Link>
         <Link
           to="/help"
           className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm"

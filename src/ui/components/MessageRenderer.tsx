@@ -2,6 +2,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ThinkingBlock from './ThinkingBlock';
 import ToolCallBlock from './ToolCallBlock';
+import CollapsibleContent from './CollapsibleContent';
 import { SparkleIcon, UserIcon } from './Icons';
 import Badge from './Badge';
 
@@ -30,6 +31,7 @@ interface Message {
 interface MessageRendererProps {
   message: Message;
   showThinking?: boolean;
+  collapseThreshold?: number;
   onToolClick?: (toolCall: ToolCall) => void;
 }
 
@@ -38,7 +40,7 @@ function CostBadge({ cost }: { cost: number }) {
   return <Badge variant={variant}>${cost.toFixed(4)}</Badge>;
 }
 
-export default function MessageRenderer({ message, showThinking = true, onToolClick }: MessageRendererProps) {
+export default function MessageRenderer({ message, showThinking = true, collapseThreshold = 300, onToolClick }: MessageRendererProps) {
   const time = new Date(message.timestamp).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -88,9 +90,11 @@ export default function MessageRenderer({ message, showThinking = true, onToolCl
                 boxShadow: 'var(--shadow-sm)',
               }}
             >
-              <div className="prose prose-sm max-w-none" style={{ color: 'var(--color-text)' }}>
-                <Markdown remarkPlugins={[remarkGfm]}>{cleaned}</Markdown>
-              </div>
+              <CollapsibleContent maxCollapsedHeight={collapseThreshold} gradientColor="var(--color-user-bubble)">
+                <div className="prose prose-sm max-w-none" style={{ color: 'var(--color-text)' }}>
+                  <Markdown remarkPlugins={[remarkGfm]}>{cleaned}</Markdown>
+                </div>
+              </CollapsibleContent>
             </div>
           </div>
         </div>
@@ -144,9 +148,11 @@ export default function MessageRenderer({ message, showThinking = true, onToolCl
 
             {/* Text content */}
             {text && (
-              <div className="prose prose-sm max-w-none" style={{ color: 'var(--color-text)' }}>
-                <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
-              </div>
+              <CollapsibleContent maxCollapsedHeight={collapseThreshold} gradientColor="var(--color-surface)">
+                <div className="prose prose-sm max-w-none" style={{ color: 'var(--color-text)' }}>
+                  <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+                </div>
+              </CollapsibleContent>
             )}
 
             {/* Tool calls */}

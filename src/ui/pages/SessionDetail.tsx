@@ -9,6 +9,7 @@ import { Skeleton, SkeletonGroup } from '../components/Skeleton';
 import { useContextPanel } from '../components/ContextPanelProvider';
 import { ChevronRightIcon, ZapIcon, CopyIcon, CheckIcon } from '../components/Icons';
 import { useSessionNavigation } from '../hooks/useSessionNavigation';
+import { useSettings } from '../hooks/useSettings';
 
 interface SessionData {
   id: string;
@@ -54,7 +55,8 @@ function SessionSkeleton() {
 export default function SessionDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: session, loading, error } = useApi<SessionData>(`/sessions/${id}`);
-  const [showThinking, setShowThinking] = useState(true);
+  const [settings] = useSettings();
+  const [showThinking, setShowThinking] = useState(settings.defaultShowThinking);
   const [idCopied, setIdCopied] = useState(false);
   const [agentsExpanded, setAgentsExpanded] = useState(false);
   const { openPanel } = useContextPanel();
@@ -236,6 +238,7 @@ export default function SessionDetail() {
             messages={turnMsgs}
             turnNumber={i + 1}
             showThinking={showThinking}
+            collapseThreshold={settings.collapseThreshold || undefined}
             onToolClick={handleToolClick}
           />
         ))}
