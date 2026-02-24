@@ -17,7 +17,7 @@ export function useKeyboardShortcuts(
         e.preventDefault();
         navigate('/search');
         setTimeout(() => {
-          const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+          const input = document.querySelector('[data-search-input]') as HTMLInputElement;
           input?.focus();
         }, 100);
         break;

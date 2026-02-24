@@ -67,6 +67,7 @@ export default function Search() {
           onKeyDown={e => e.key === 'Enter' && doSearch()}
           className="flex-1 py-2.5 text-sm bg-transparent outline-none"
           style={{ color: 'var(--color-text)' }}
+          data-search-input
           autoFocus
         />
         <button
