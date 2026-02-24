@@ -183,6 +183,11 @@ async function scanSessionRef(
       try {
         const obj = JSON.parse(lines[i]);
 
+        // Capture first timestamp as session start time
+        if (!ref.startedAt && obj.timestamp) {
+          ref.startedAt = new Date(obj.timestamp);
+        }
+
         // Extract metadata from first 20 lines
         if (i < 20) {
           if (obj.type === 'user' && obj.message) {

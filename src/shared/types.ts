@@ -32,6 +32,7 @@ export interface SessionRef {
   gitBranch?: string;
   slug?: string;
   version?: string;
+  startedAt?: Date;               // timestamp of first message
   agents: AgentRef[];             // sub-agents for this session
   tokenUsage?: TokenUsage;        // aggregated from all assistant messages
   estimatedCostUsd?: number;      // computed from tokenUsage

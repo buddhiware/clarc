@@ -39,7 +39,9 @@ function CostBadge({ cost }: { cost: number }) {
 }
 
 export default function MessageRenderer({ message, showThinking = true, onToolClick }: MessageRendererProps) {
-  const time = new Date(message.timestamp).toLocaleTimeString('en-US', {
+  const time = new Date(message.timestamp).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
