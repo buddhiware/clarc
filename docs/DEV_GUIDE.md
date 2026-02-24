@@ -54,16 +54,19 @@ clarc is a full-stack TypeScript application with five layers:
         |            |
    +----v----+  +----v----+
    |SOURCE_DIR|  | DATA_DIR|
-   |~/.claude/|  |~/.config|
-   |(read-only)|  |/clarc/  |
-   +----------+  |data/    |
-                 |(r/w)    |
-                 +---------+
+   |~/.claude/|  |(see note)|
+   |(read-only)|  |(r/w)    |
+   +----------+  +---------+
 ```
+
+**DATA_DIR location depends on how clarc is running:**
+- **Compiled binary** (`./clarc`): `data/` next to the executable (portable)
+- **Dev mode** (`bun run` / Docker): `~/.config/clarc/data/`
+- **Explicit override**: `CLARC_DATA_DIR` env var takes priority in all cases
 
 **Key principles:**
 - clarc **never modifies** user data in `~/.claude/`. All access to that directory is read-only.
-- A transparent sync layer copies data from `~/.claude/` (source) into `~/.config/clarc/data/` (local working copy). All reads go through the working copy.
+- A transparent sync layer copies data from `~/.claude/` (source) into `DATA_DIR` (local working copy). All reads go through the working copy.
 - Sync is **add-only** (never deletes files from the working copy) and runs at startup, every 5 minutes, and on demand.
 
 ### Tech Stack
@@ -295,14 +298,27 @@ export const SOURCE_DIR = process.env.CLARC_CLAUDE_DIR || join(homedir(), '.clau
 // clarc's own config directory
 export const CONFIG_DIR = process.env.CLARC_CONFIG_DIR || join(homedir(), '.config', 'clarc');
 
-// Local data directory (clarc's working copy — read/write)
-export const DATA_DIR = join(CONFIG_DIR, 'data');
-
 // Port
 export const PORT = parseInt(process.env.CLARC_PORT || '3838', 10);
 
 // Sync interval (ms), default 5 minutes
 export const SYNC_INTERVAL_MS = parseInt(process.env.CLARC_SYNC_INTERVAL_MS || '300000', 10);
+
+// Portable data directory
+// - Compiled binary: data/ next to the executable (portable)
+// - Dev mode / bun run: CONFIG_DIR/data (unchanged behavior)
+// - Explicit override: CLARC_DATA_DIR env var
+export const DATA_DIR = process.env.CLARC_DATA_DIR || getDefaultDataDir();
+
+function getDefaultDataDir(): string {
+  const execName = basename(process.execPath);
+  if (execName === 'clarc') {
+    // Compiled binary — store data next to it for portability
+    return join(dirname(process.execPath), 'data');
+  }
+  // Dev mode — use config directory
+  return join(CONFIG_DIR, 'data');
+}
 
 // Derived paths — point to local data copy (populated by sync)
 export const PROJECTS_DIR = join(DATA_DIR, 'projects');
@@ -310,8 +326,8 @@ export const TODOS_DIR = join(DATA_DIR, 'todos');
 export const HISTORY_FILE = join(DATA_DIR, 'history.jsonl');
 export const STATS_FILE = join(DATA_DIR, 'stats-cache.json');
 
-// Sync state file
-export const SYNC_STATE_FILE = join(CONFIG_DIR, 'sync-state.json');
+// Sync state file — lives inside DATA_DIR so it travels with the data
+export const SYNC_STATE_FILE = join(DATA_DIR, 'sync-state.json');
 
 // Legacy alias — some existing code references CLAUDE_DIR
 export const CLAUDE_DIR = SOURCE_DIR;
@@ -322,23 +338,33 @@ export const FILE_HISTORY_DIR = join(SOURCE_DIR, 'file-history');
 export const SETTINGS_FILE = join(SOURCE_DIR, 'settings.json');
 ```
 
+**Portable data directory logic:**
+
+`DATA_DIR` is resolved at runtime using this priority:
+
+1. `CLARC_DATA_DIR` env var (explicit override — always wins)
+2. Compiled binary (`basename(process.execPath) === 'clarc'`) → `data/` next to the binary
+3. Dev mode (bun/node runtime) → `~/.config/clarc/data/`
+
+This means:
+- **Compiled binary**: `./clarc` stores synced data in `./data/` — copy the binary + `data/` folder to a new machine to preserve all history
+- **Dev mode / Docker**: `process.execPath` is `bun`, so it falls back to `~/.config/clarc/data/` (Docker: `/home/clarc-config/data/`)
+- **Custom path**: `CLARC_DATA_DIR=/my/path clarc` overrides everything
+
 **Data flow:**
 
 | Variable | Points To | Access | Notes |
 |----------|-----------|--------|-------|
 | `SOURCE_DIR` | `~/.claude/` | Read-only | Where Claude Code writes data |
 | `CONFIG_DIR` | `~/.config/clarc/` | Read-write | clarc's own config/state |
-| `DATA_DIR` | `~/.config/clarc/data/` | Read-write | Sync'd working copy |
+| `DATA_DIR` | *(see above)* | Read-write | Sync'd working copy (portable) |
 | `PROJECTS_DIR` | `DATA_DIR/projects/` | Read-write | Synced from `SOURCE_DIR/projects/` |
 | `TODOS_DIR` | `DATA_DIR/todos/` | Read-write | Synced from `SOURCE_DIR/todos/` |
 | `STATS_FILE` | `DATA_DIR/stats-cache.json` | Read-write | Synced from `SOURCE_DIR/stats-cache.json` |
 | `HISTORY_FILE` | `DATA_DIR/history.jsonl` | Read-write | Synced from `SOURCE_DIR/history.jsonl` |
+| `SYNC_STATE_FILE` | `DATA_DIR/sync-state.json` | Read-write | Tracks sync state (travels with data) |
 | `PLANS_DIR` | `SOURCE_DIR/plans/` | Read-only | Not synced |
 | `SETTINGS_FILE` | `SOURCE_DIR/settings.json` | Read-only | Not synced |
-
-This means:
-- **In Docker**: `CLARC_CLAUDE_DIR=/home/claude-data` reads the mounted volume; synced data lands in `/home/clarc-config/data/`
-- **Running the binary on host**: Falls back to `~/.claude` as source, `~/.config/clarc/data` as working copy
 
 ### `src/shared/types.ts` — Type Definitions
 
@@ -392,7 +418,7 @@ The data layer reads synced data from `DATA_DIR` (populated by sync from `~/.cla
 
 ### `src/data/sync.ts` — Sync Engine
 
-The sync engine is the foundation of v0.2's data architecture. It copies data from `SOURCE_DIR` (`~/.claude/`) to `DATA_DIR` (`~/.config/clarc/data/`), keeping a local read-write working copy.
+The sync engine is the foundation of v0.2's data architecture. It copies data from `SOURCE_DIR` (`~/.claude/`) to `DATA_DIR` (portable — see paths.ts section above), keeping a local read-write working copy.
 
 #### How it works
 

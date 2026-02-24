@@ -509,8 +509,29 @@ In v0.2, gradient backgrounds and glass effects (frosted blur on headers, panels
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLARC_CLAUDE_DIR` | `~/.claude` | Path to Claude Code data directory |
-| `CLARC_CONFIG_DIR` | `~/.config/clarc` | Path to clarc's own config and synced data |
+| `CLARC_CONFIG_DIR` | `~/.config/clarc` | Path to clarc's own config directory |
+| `CLARC_DATA_DIR` | *(auto)* | Override synced data location (see below) |
 | `CLARC_PORT` | `3838` | Web server port |
+
+### Portable Data Directory
+
+clarc automatically chooses where to store synced session data:
+
+- **Compiled binary** (`./clarc`): stores data in `data/` next to the binary — fully portable
+- **Dev mode** (`bun run` / Docker): stores data in `~/.config/clarc/data/`
+- **Explicit override**: set `CLARC_DATA_DIR` to store data wherever you want
+
+**Portability**: copy the `clarc` binary and its `data/` folder to any machine, and all your session history comes with it. Point `CLARC_CLAUDE_DIR` to the new machine's `~/.claude/` and new sessions sync alongside old ones.
+
+```bash
+# Override data location
+CLARC_DATA_DIR=/my/custom/path clarc
+
+# Portable layout — copy this entire folder to move your data
+~/apps/clarc/
+  clarc          # compiled binary
+  data/          # synced session data (auto-created)
+```
 
 ### Custom Claude Data Location
 
@@ -549,7 +570,7 @@ clarc syncs and reads the following from your `~/.claude/` directory:
 
 ### What clarc does NOT modify
 
-**Nothing.** All access to `~/.claude/` is read-only. In Docker, the volume is explicitly mounted with `:ro` (read-only). clarc syncs files to its own local copy at `~/.config/clarc/data/` and reads from there. It will never create, modify, or delete any files in your Claude Code data directory.
+**Nothing.** All access to `~/.claude/` is read-only. In Docker, the volume is explicitly mounted with `:ro` (read-only). clarc syncs files to its own local data directory and reads from there. When running the compiled binary, data lives in `data/` next to the binary; in dev mode, it lives in `~/.config/clarc/data/`. It will never create, modify, or delete any files in your Claude Code data directory.
 
 ### Data Flow
 
@@ -557,17 +578,18 @@ clarc syncs and reads the following from your `~/.claude/` directory:
 ~/.claude/               Sync layer              clarc server                Browser
 +----------------+      +---------------+       +--------------+          +----------+
 | projects/      |      |               |       |              |          |          |
-|   *.jsonl      |--+-->| ~/.config/    |       |  In-memory   |--GET /-->|  React   |
-| history.jsonl  |  |   |   clarc/data/ |--+--->|  index       |  api     |  UI      |
+|   *.jsonl      |--+-->|   DATA_DIR    |       |  In-memory   |--GET /-->|  React   |
+| history.jsonl  |  |   |  (portable)   |--+--->|  index       |  api     |  UI      |
 | todos/         |--+   |               |  |    |              |          |          |
 +----------------+      | (add-only     |  |    |  LRU cache   |          | Context  |
      READ-ONLY          |  mirror)      |  |    |              |          | Panel    |
                         +---------------+  |    +--------------+          +----------+
                                            |    Hono on :3838            Vite on :5173
-                         Startup + every   |
-                         5 minutes         |
-                                           +--- Scanner/parser read
-                                                from local copy only
+  DATA_DIR location:     Startup + every   |
+  Binary: ./data/        5 minutes         |
+  Dev: ~/.config/                          +--- Scanner/parser read
+       clarc/data/                              from local copy only
+  Override: CLARC_DATA_DIR
 ```
 
 ### Session Discovery
@@ -616,7 +638,7 @@ The help page covers:
 
 ### Is clarc safe to use? Will it modify my Claude Code data?
 
-Yes, completely safe. clarc is read-only. It syncs your files to a local copy at `~/.config/clarc/data/` and reads from there. It never creates, modifies, or deletes any files in `~/.claude/`. When running in Docker, the source directory is mounted with the `:ro` (read-only) flag as an additional safeguard.
+Yes, completely safe. clarc is read-only. It syncs your files to a local data directory and reads from there. It never creates, modifies, or deletes any files in `~/.claude/`. When running in Docker, the source directory is mounted with the `:ro` (read-only) flag as an additional safeguard. See the [Portable Data Directory](#portable-data-directory) section for where synced data is stored.
 
 ### Why are some sessions missing?
 
@@ -637,7 +659,7 @@ The Context Panel is a side panel that slides in from the right side of the scre
 
 ### How does data sync work?
 
-clarc copies files from `~/.claude/` to `~/.config/clarc/data/` at startup and every 5 minutes. The sync is add-only -- new and updated files are copied, but files are never deleted from the local copy. The scanner and parser read exclusively from this local copy. You can trigger a manual sync with `POST /api/sync`, or run a reindex (`POST /api/reindex`) which automatically syncs first.
+clarc copies files from `~/.claude/` to its local data directory at startup and every 5 minutes. When running the compiled binary, data lives in `data/` next to the binary; in dev mode, it's in `~/.config/clarc/data/`; or set `CLARC_DATA_DIR` to override. The sync is add-only -- new and updated files are copied, but files are never deleted from the local copy. The scanner and parser read exclusively from this local copy. You can trigger a manual sync with `POST /api/sync`, or run a reindex (`POST /api/reindex`) which automatically syncs first.
 
 ### Can I use clarc with multiple Claude Code installations?
 
