@@ -3,13 +3,21 @@ import { getIndex, reindex } from '../data/scanner';
 import { parseSession, pairToolCalls } from '../data/parser';
 import { readStatsCache, computeAnalytics } from '../data/stats';
 import { PORT } from '../shared/paths';
+import { initSync } from '../data/sync-scheduler';
 
 const program = new Command();
 
 program
   .name('clarc')
   .description('Claude Archive — browse, search, and analyze your Claude Code history')
-  .version('0.1.0');
+  .version('0.2.0');
+
+// Sync data before any command that reads it
+program.hook('preAction', async (thisCommand) => {
+  // Skip sync for the serve command (server handles its own sync)
+  if (thisCommand.name() === 'serve') return;
+  await initSync();
+});
 
 // Default command: start the web server
 program

@@ -6,39 +6,30 @@ import ScrollProgress from '../components/ScrollProgress';
 import ScrollNav from '../components/ScrollNav';
 import Badge from '../components/Badge';
 import { Skeleton, SkeletonGroup } from '../components/Skeleton';
-import { useContextPanel } from '../components/ContextPanelProvider';
-import { ChevronRightIcon, ZapIcon, CopyIcon, CheckIcon } from '../components/Icons';
-import { useSessionNavigation } from '../hooks/useSessionNavigation';
+import { ChevronRightIcon, ZapIcon } from '../components/Icons';
 
-interface SessionData {
+interface AgentData {
   id: string;
   projectId: string;
   projectName: string;
+  parentSessionId: string;
   messages: any[];
-  agents: { agentId: string; description?: string }[];
   metadata: {
-    slug?: string;
     model?: string;
-    gitBranch?: string;
-    cwd?: string;
-    version?: string;
-    startedAt?: string;
-    endedAt?: string;
-    durationMs?: number;
     totalMessages: number;
     tokenUsage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreateTokens: number };
     estimatedCostUsd: number;
   };
 }
 
-function SessionSkeleton() {
+function AgentSkeleton() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="px-6 py-4">
-        <Skeleton variant="text" width="30%" />
-        <Skeleton variant="title" width="60%" />
+        <Skeleton variant="text" width="40%" />
+        <Skeleton variant="title" width="50%" />
         <div className="flex gap-2 mt-2">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} variant="text" width="60px" />)}
+          {[1, 2, 3].map(i => <Skeleton key={i} variant="text" width="60px" />)}
         </div>
       </div>
       <div className="space-y-4 px-6">
@@ -51,42 +42,21 @@ function SessionSkeleton() {
   );
 }
 
-export default function SessionDetail() {
-  const { id } = useParams<{ id: string }>();
-  const { data: session, loading, error } = useApi<SessionData>(`/sessions/${id}`);
+export default function AgentDetail() {
+  const { projectId, agentId } = useParams<{ projectId: string; agentId: string }>();
+  const { data: agent, loading, error } = useApi<AgentData>(
+    `/sessions/agents/${encodeURIComponent(projectId || '')}/${encodeURIComponent(agentId || '')}`
+  );
   const [showThinking, setShowThinking] = useState(true);
-  const [idCopied, setIdCopied] = useState(false);
-  const { openPanel } = useContextPanel();
   const navigate = useNavigate();
 
-  // Enable [ / ] keyboard navigation between sessions
-  useSessionNavigation(session?.projectId || '', session?.id || '');
-
-  if (loading) return <SessionSkeleton />;
+  if (loading) return <AgentSkeleton />;
   if (error) return <div className="p-6 text-sm" style={{ color: 'var(--color-accent-rose)' }}>Error: {error}</div>;
-  if (!session) return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>Session not found</div>;
+  if (!agent) return <div className="p-6 text-sm" style={{ color: 'var(--color-text-muted)' }}>Agent not found</div>;
 
-  const meta = session.metadata;
+  const meta = agent.metadata;
   const tokens = meta.tokenUsage;
-  const turns = groupIntoTurns(session.messages);
-
-  const handleCopyId = async () => {
-    await navigator.clipboard.writeText(session.id);
-    setIdCopied(true);
-    setTimeout(() => setIdCopied(false), 2000);
-  };
-
-  const handleToolClick = (toolCall: { id: string; name: string; input: any; result?: any; isError?: boolean }) => {
-    openPanel({
-      type: 'tool-detail',
-      toolCall,
-      title: toolCall.name,
-    });
-  };
-
-  const handleAgentClick = (agentId: string) => {
-    navigate(`/agents/${encodeURIComponent(session.projectId)}/${encodeURIComponent(agentId)}`);
-  };
+  const turns = groupIntoTurns(agent.messages);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -105,19 +75,25 @@ export default function SessionDetail() {
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 text-xs">
               <Link
-                to={`/projects/${encodeURIComponent(session.projectId)}`}
+                to={`/projects/${encodeURIComponent(agent.projectId)}`}
                 className="hover:underline"
                 style={{ color: 'var(--color-primary)' }}
               >
-                {session.projectName}
+                {agent.projectName}
               </Link>
               <ChevronRightIcon size={10} />
-              <span style={{ color: 'var(--color-text)' }}>
-                {meta.slug || `Session ${session.id.slice(0, 8)}`}
+              <Link
+                to={`/sessions/${agent.parentSessionId}`}
+                className="hover:underline"
+                style={{ color: 'var(--color-primary)' }}
+              >
+                Session {agent.parentSessionId.slice(0, 8)}
+              </Link>
+              <ChevronRightIcon size={10} />
+              <span className="inline-flex items-center gap-1" style={{ color: 'var(--color-text)' }}>
+                <ZapIcon size={10} />
+                Agent {(agentId || '').slice(0, 8)}
               </span>
-              <button onClick={handleCopyId} className="btn-ghost p-0.5 rounded ml-1" title="Copy session ID">
-                {idCopied ? <CheckIcon size={10} /> : <CopyIcon size={10} />}
-              </button>
             </div>
 
             {/* Metadata pills */}
@@ -134,13 +110,6 @@ export default function SessionDetail() {
               <Badge variant={meta.estimatedCostUsd > 0.10 ? 'error' : meta.estimatedCostUsd > 0.01 ? 'warning' : 'success'}>
                 ${meta.estimatedCostUsd.toFixed(4)}
               </Badge>
-              {meta.gitBranch && <Badge variant="default">{meta.gitBranch}</Badge>}
-              {meta.durationMs && <Badge variant="default">{Math.round(meta.durationMs / 60000)}min</Badge>}
-              {meta.startedAt && (
-                <Badge variant="default">
-                  {new Date(meta.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </Badge>
-              )}
             </div>
           </div>
 
@@ -155,36 +124,15 @@ export default function SessionDetail() {
             >
               {showThinking ? 'Hide' : 'Show'} Thinking
             </button>
-            <a
-              href={`/api/export/session/${session.id}`}
+            <button
+              onClick={() => navigate(`/sessions/${agent.parentSessionId}`)}
               className="btn-ghost text-xs px-3 py-1.5 rounded-lg"
               style={{ border: '1px solid var(--color-border)' }}
             >
-              Export .md
-            </a>
+              Parent Session
+            </button>
           </div>
         </div>
-
-        {/* Agent chips */}
-        {session.agents.length > 0 && (
-          <div className="flex gap-2 mt-2 flex-wrap">
-            {session.agents.map(a => (
-              <button
-                key={a.agentId}
-                onClick={() => handleAgentClick(a.agentId)}
-                className="btn-ghost inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-                style={{
-                  backgroundColor: 'var(--color-surface-2)',
-                  color: 'var(--color-primary)',
-                }}
-              >
-                <ZapIcon size={10} />
-                agent:{a.agentId.slice(0, 8)}
-                {a.description && ` — ${a.description}`}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Conversation turns */}
@@ -195,14 +143,13 @@ export default function SessionDetail() {
             messages={turnMsgs}
             turnNumber={i + 1}
             showThinking={showThinking}
-            onToolClick={handleToolClick}
           />
         ))}
       </div>
 
       {/* Footer */}
       <div className="p-6 text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
-        End of session &middot; {meta.totalMessages} messages &middot; ${meta.estimatedCostUsd.toFixed(4)}
+        End of agent conversation &middot; {meta.totalMessages} messages &middot; ${meta.estimatedCostUsd.toFixed(4)}
       </div>
 
       <ScrollNav />

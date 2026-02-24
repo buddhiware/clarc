@@ -1,5 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import StatCard from '../components/StatCard';
+import ChartCard from '../components/ChartCard';
+import { Skeleton, SkeletonGroup } from '../components/Skeleton';
+import { FolderIcon, MessageIcon, ZapIcon, DollarIcon, ChevronRightIcon } from '../components/Icons';
 
 interface Status {
   projectCount: number;
@@ -29,61 +34,157 @@ interface ProjectSummary {
   messageCount: number;
 }
 
+function DashboardSkeleton() {
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      <Skeleton variant="title" width="30%" />
+      <Skeleton variant="text" width="50%" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 mb-8">
+        {[1, 2, 3, 4].map(i => <Skeleton key={i} variant="stat" />)}
+      </div>
+      <Skeleton variant="chart" />
+      <div className="grid gap-3 mt-6">
+        {[1, 2, 3].map(i => <Skeleton key={i} variant="card" height={72} />)}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data: status } = useApi<Status>('/status');
   const { data: analytics } = useApi<Analytics>('/analytics');
   const { data: projects } = useApi<ProjectSummary[]>('/projects');
 
-  if (!status) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading...</div>
-      </div>
-    );
-  }
+  if (!status) return <DashboardSkeleton />;
 
   const totalCost = analytics ? Object.values(analytics.costByModel).reduce((a, b) => a + b, 0) : 0;
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>Dashboard</h1>
+      {/* Hero */}
+      <div className="relative mb-8 overflow-hidden">
+        {/* Background gradient blob */}
+        <div
+          className="absolute -top-24 -right-24 w-72 h-72 rounded-full"
+          style={{
+            background: 'var(--gradient-hero)',
+            opacity: 0.07,
+            filter: 'blur(60px)',
+          }}
+        />
+        <h1 className="text-3xl font-bold mb-1 text-gradient">Dashboard</h1>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
           Your Claude Code history at a glance
         </p>
       </div>
 
-      {/* Hero stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Projects" value={status.projectCount} />
-        <StatCard label="Sessions" value={status.sessionCount} />
-        <StatCard label="Messages" value={status.messageCount} />
-        <StatCard label="Est. Cost" value={`$${totalCost.toFixed(2)}`} />
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 stagger-children">
+        <StatCard
+          label="Projects"
+          value={status.projectCount}
+          gradient="var(--gradient-stat-1)"
+          icon={<FolderIcon size={20} />}
+        />
+        <StatCard
+          label="Sessions"
+          value={status.sessionCount}
+          gradient="var(--gradient-stat-2)"
+          icon={<MessageIcon size={20} />}
+        />
+        <StatCard
+          label="Messages"
+          value={status.messageCount}
+          gradient="var(--gradient-stat-3)"
+          icon={<ZapIcon size={20} />}
+        />
+        <StatCard
+          label="Est. Cost"
+          value={`$${totalCost.toFixed(2)}`}
+          gradient="var(--gradient-stat-4)"
+          icon={<DollarIcon size={20} />}
+        />
       </div>
 
-      {/* Model usage */}
+      {/* Activity chart */}
+      {analytics?.dailyActivity && analytics.dailyActivity.length > 0 && (
+        <ChartCard title="Daily Activity" subtitle="Messages per day" height={220}>
+          <AreaChart data={analytics.dailyActivity}>
+            <defs>
+              <linearGradient id="activityGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }}
+              tickLine={false}
+              axisLine={false}
+              width={40}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'var(--color-surface-elevated)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+                boxShadow: 'var(--shadow-md)',
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="messageCount"
+              stroke="var(--color-primary)"
+              strokeWidth={2}
+              fill="url(#activityGrad)"
+              name="Messages"
+            />
+          </AreaChart>
+        </ChartCard>
+      )}
+
+      {/* Model usage table */}
       {analytics?.modelUsage && (
         <div className="mb-8">
           <h2 className="text-lg font-semibold mb-3" style={{ color: 'var(--color-text)' }}>Model Usage</h2>
-          <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: 'var(--color-surface-2)' }}>
-                  <th className="text-left px-4 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>Model</th>
-                  <th className="text-right px-4 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>Input Tokens</th>
-                  <th className="text-right px-4 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>Output Tokens</th>
-                  <th className="text-right px-4 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>Cache Read</th>
-                  <th className="text-right px-4 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>Est. Cost</th>
+                  <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>Model</th>
+                  <th className="text-right px-4 py-2.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>Input</th>
+                  <th className="text-right px-4 py-2.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>Output</th>
+                  <th className="text-right px-4 py-2.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>Cache</th>
+                  <th className="text-right px-4 py-2.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>Cost</th>
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(analytics.modelUsage).map(([model, usage]) => (
-                  <tr key={model} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-                    <td className="px-4 py-2 font-mono text-xs" style={{ color: 'var(--color-text)' }}>{model}</td>
-                    <td className="px-4 py-2 text-right" style={{ color: 'var(--color-text)' }}>{(usage.inputTokens).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right" style={{ color: 'var(--color-text)' }}>{(usage.outputTokens).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right" style={{ color: 'var(--color-text)' }}>{(usage.cacheReadInputTokens).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right font-medium" style={{ color: 'var(--color-primary)' }}>
+                  <tr
+                    key={model}
+                    className="border-t"
+                    style={{
+                      borderColor: 'var(--color-border)',
+                      transition: 'background-color var(--duration-fast) ease',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--color-text)' }}>{model}</td>
+                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)' }}>{usage.inputTokens.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)' }}>{usage.outputTokens.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)' }}>{usage.cacheReadInputTokens.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-medium" style={{ color: 'var(--color-primary)' }}>
                       ${(analytics.costByModel[model] || 0).toFixed(4)}
                     </td>
                   </tr>
@@ -94,71 +195,37 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Activity */}
-      {analytics?.dailyActivity && analytics.dailyActivity.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-3" style={{ color: 'var(--color-text)' }}>Daily Activity</h2>
-          <div className="flex gap-1 items-end h-32 px-4 py-3 rounded-lg border"
-            style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
-            {analytics.dailyActivity.map((day, i) => {
-              const maxMsgs = Math.max(...analytics.dailyActivity.map(d => d.messageCount));
-              const height = maxMsgs > 0 ? (day.messageCount / maxMsgs) * 100 : 0;
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center justify-end" title={`${day.date}: ${day.messageCount} msgs`}>
-                  <div
-                    className="w-full rounded-t"
-                    style={{
-                      height: `${Math.max(height, 2)}%`,
-                      backgroundColor: 'var(--color-primary)',
-                      opacity: 0.7 + (height / 100) * 0.3,
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex justify-between px-4 mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            <span>{analytics.dailyActivity[0]?.date}</span>
-            <span>{analytics.dailyActivity[analytics.dailyActivity.length - 1]?.date}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Recent projects */}
+      {/* Projects */}
       <div>
         <h2 className="text-lg font-semibold mb-3" style={{ color: 'var(--color-text)' }}>Projects</h2>
-        <div className="grid gap-3">
+        <div className="grid gap-3 stagger-children">
           {projects?.filter(p => p.sessionCount > 0).map(p => (
             <Link
               key={p.id}
               to={`/projects/${encodeURIComponent(p.id)}`}
-              className="block p-4 rounded-lg border transition-colors hover:border-[var(--color-primary)]"
-              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+              className="card group/proj"
             >
-              <div className="flex items-center justify-between">
-                <div className="font-medium" style={{ color: 'var(--color-text)' }}>{p.name}</div>
-                <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  {p.sessionCount} sessions
+              <div className="p-4 flex items-center gap-3">
+                <span style={{ color: 'var(--color-text-muted)' }}>
+                  <FolderIcon size={18} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium" style={{ color: 'var(--color-text)' }}>{p.name}</div>
+                  <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                    {p.sessionCount} sessions &middot; {p.messageCount} messages
+                  </div>
                 </div>
-              </div>
-              <div className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                {p.messageCount} messages
+                <span
+                  className="opacity-0 group-hover/proj:opacity-100 flex-shrink-0"
+                  style={{ color: 'var(--color-text-muted)', transition: 'opacity var(--duration-fast) ease' }}
+                >
+                  <ChevronRightIcon size={16} />
+                </span>
               </div>
             </Link>
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="p-4 rounded-lg border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
-      <div className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>
-        {typeof value === 'number' ? value.toLocaleString() : value}
-      </div>
-      <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{label}</div>
     </div>
   );
 }

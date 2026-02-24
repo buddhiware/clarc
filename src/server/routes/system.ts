@@ -1,16 +1,20 @@
 import { Hono } from 'hono';
 import { getIndex, reindex } from '../../data/scanner';
-import { CLAUDE_DIR, CONFIG_DIR } from '../../shared/paths';
+import { SOURCE_DIR, CONFIG_DIR, DATA_DIR } from '../../shared/paths';
+import { getSyncStatus } from '../../data/sync';
+import { runSync } from '../../data/sync';
 
 const app = new Hono();
 
-// GET /api/status — health, index stats
+// GET /api/status — health, index stats, sync info
 app.get('/status', async (c) => {
   const index = await getIndex();
+  const sync = getSyncStatus();
   return c.json({
     status: 'ok',
-    version: '0.1.0',
-    claudeDir: CLAUDE_DIR,
+    version: '0.2.0',
+    sourceDir: SOURCE_DIR,
+    dataDir: DATA_DIR,
     configDir: CONFIG_DIR,
     lastIndexedAt: index.lastIndexedAt,
     projectCount: index.projects.length,
@@ -19,11 +23,22 @@ app.get('/status', async (c) => {
     messageCount: index.projects.reduce((sum, p) => sum + p.messageCount, 0),
     hasStats: index.globalStats !== null,
     promptHistoryCount: index.promptHistory.length,
+    sync: {
+      lastSyncAt: sync.lastSyncAt,
+      syncCount: sync.syncCount,
+      totalFiles: sync.totalFiles,
+      isSyncing: sync.isSyncing,
+      errorCount: sync.errors.length,
+    },
   });
 });
 
-// POST /api/reindex — trigger re-scan
+// POST /api/reindex — sync + re-scan (pass ?sync=false to skip sync)
 app.post('/reindex', async (c) => {
+  const skipSync = c.req.query('sync') === 'false';
+  if (!skipSync) {
+    await runSync();
+  }
   const index = await reindex();
   return c.json({
     status: 'reindexed',

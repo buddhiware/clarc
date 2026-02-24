@@ -1,9 +1,10 @@
 import { readdir, stat, readFile } from 'fs/promises';
 import { join, basename } from 'path';
 import { PROJECTS_DIR, TODOS_DIR, HISTORY_FILE, STATS_FILE } from '../shared/paths';
-import type { ClarcIndex, Project, SessionRef, AgentRef, TaskList, GlobalStats, PromptEntry } from '../shared/types';
+import type { ClarcIndex, Project, SessionRef, AgentRef, TaskList, GlobalStats, PromptEntry, TokenUsage } from '../shared/types';
 import { parseTodoFile } from './tasks';
 import { readStatsCache } from './stats';
+import { estimateCost } from '../shared/pricing';
 
 let cachedIndex: ClarcIndex | null = null;
 
@@ -174,29 +175,51 @@ async function scanSessionRef(
     ref.messageCount = lines.length;
     let firstUserMsg: string | undefined;
 
-    for (const line of lines.slice(0, 20)) {
+    // Token usage aggregation (extracted from ALL assistant messages)
+    const tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0 };
+    let hasUsageData = false;
+
+    for (let i = 0; i < lines.length; i++) {
       try {
-        const obj = JSON.parse(line);
+        const obj = JSON.parse(lines[i]);
 
-        if (obj.type === 'user' && obj.message) {
-          if (!ref.slug && obj.slug) ref.slug = obj.slug;
-          if (!ref.version && obj.version) ref.version = obj.version;
-          if (!ref.gitBranch && obj.gitBranch) ref.gitBranch = obj.gitBranch;
+        // Extract metadata from first 20 lines
+        if (i < 20) {
+          if (obj.type === 'user' && obj.message) {
+            if (!ref.slug && obj.slug) ref.slug = obj.slug;
+            if (!ref.version && obj.version) ref.version = obj.version;
+            if (!ref.gitBranch && obj.gitBranch) ref.gitBranch = obj.gitBranch;
 
-          // Extract summary from first real user message
-          if (!firstUserMsg && !obj.isMeta) {
-            const content = obj.message.content;
-            if (typeof content === 'string') {
-              firstUserMsg = content;
-            } else if (Array.isArray(content)) {
-              const textBlock = content.find((b: any) => b.type === 'text');
-              if (textBlock?.text) firstUserMsg = textBlock.text;
+            // Extract summary from first real user message
+            if (!firstUserMsg && !obj.isMeta) {
+              const content = obj.message.content;
+              if (typeof content === 'string') {
+                firstUserMsg = content;
+              } else if (Array.isArray(content)) {
+                const textBlock = content.find((b: any) => b.type === 'text');
+                if (textBlock?.text) firstUserMsg = textBlock.text;
+              }
             }
+          }
+
+          if (obj.type === 'assistant' && obj.message?.model) {
+            if (!ref.model) ref.model = obj.message.model;
+          }
+        } else {
+          // For lines beyond first 20, only check assistant messages for model
+          if (!ref.model && obj.type === 'assistant' && obj.message?.model) {
+            ref.model = obj.message.model;
           }
         }
 
-        if (obj.type === 'assistant' && obj.message?.model) {
-          if (!ref.model) ref.model = obj.message.model;
+        // Extract token usage from ALL assistant messages (fast: just check for usage object)
+        if (obj.type === 'assistant' && obj.message?.usage) {
+          const u = obj.message.usage;
+          tokenUsage.inputTokens += u.input_tokens || 0;
+          tokenUsage.outputTokens += u.output_tokens || 0;
+          tokenUsage.cacheReadTokens += u.cache_read_input_tokens || 0;
+          tokenUsage.cacheCreateTokens += u.cache_creation_input_tokens || 0;
+          hasUsageData = true;
         }
       } catch {
         // skip malformed lines
@@ -208,6 +231,14 @@ async function scanSessionRef(
       firstUserMsg = firstUserMsg.replace(/<command-message>.*?<\/command-message>/g, '').trim();
       firstUserMsg = firstUserMsg.replace(/<command-name>.*?<\/command-name>/g, '').trim();
       ref.summary = firstUserMsg.slice(0, 200);
+    }
+
+    // Store token usage and estimated cost
+    if (hasUsageData) {
+      ref.tokenUsage = tokenUsage;
+      if (ref.model) {
+        ref.estimatedCostUsd = estimateCost(ref.model, tokenUsage);
+      }
     }
   } catch (err) {
     console.warn(`Warning: failed to read session metadata for ${sessionId}:`, err);

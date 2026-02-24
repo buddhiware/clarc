@@ -6,6 +6,9 @@ bun.lock
 dist/
 dist-binary/
 
+# Synced session data (portable data directory)
+/data/
+
 # Runtime
 *.log
 *.pid

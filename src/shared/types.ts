@@ -33,6 +33,8 @@ export interface SessionRef {
   slug?: string;
   version?: string;
   agents: AgentRef[];             // sub-agents for this session
+  tokenUsage?: TokenUsage;        // aggregated from all assistant messages
+  estimatedCostUsd?: number;      // computed from tokenUsage
 }
 
 export interface AgentRef {
@@ -234,4 +236,42 @@ export interface SearchResult {
   timestamp: Date;
   model?: string;
   score?: number;
+}
+
+// ============================================================
+// Data Sync
+// ============================================================
+
+export interface SyncState {
+  version: 1;
+  lastSyncAt: string;
+  lastSyncDurationMs: number;
+  syncCount: number;
+  sourceDir: string;
+  fileInventory: Record<string, SyncedFile>;
+  errors: SyncError[];
+}
+
+export interface SyncedFile {
+  relativePath: string;
+  sourceMtimeMs: number;
+  sourceSizeBytes: number;
+  syncedAt: string;
+}
+
+export interface SyncError {
+  timestamp: string;
+  relativePath: string;
+  error: string;
+}
+
+export interface SyncStatus {
+  lastSyncAt: string | null;
+  lastSyncDurationMs: number;
+  syncCount: number;
+  sourceDir: string;
+  totalFiles: number;
+  totalSizeBytes: number;
+  errors: SyncError[];
+  isSyncing: boolean;
 }
