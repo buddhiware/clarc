@@ -218,7 +218,7 @@ export default function Help() {
           <li>Searches through all message text content (user and assistant) and thinking blocks.</li>
           <li>Matching is case-insensitive substring.</li>
           <li>Results show project name, message type, date, and a snippet with highlighted matches.</li>
-          <li>Click a result to jump to the full session.</li>
+          <li>Click a result to jump directly to the matching message — the page scrolls to it and highlights it with a brief flash.</li>
           <li>Press <kbd className="inline-block px-1.5 py-0.5 rounded text-xs font-mono" style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>/</kbd> from anywhere to jump to search.</li>
         </ul>
       </Section>

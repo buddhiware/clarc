@@ -215,6 +215,11 @@ code, pre, .font-mono {
   to { transform: translateX(0); }
 }
 
+@keyframes highlightFlash {
+  0% { background-color: rgba(99, 102, 241, 0.25); }
+  100% { background-color: transparent; }
+}
+
 /* ============================================ */
 /* Utility Classes                              */
 /* ============================================ */
@@ -227,6 +232,7 @@ code, pre, .font-mono {
 .animate-slideInRight { animation: slideInRight var(--duration-enter) var(--ease-out-expo) both; }
 .animate-scaleIn { animation: scaleIn var(--duration-enter) var(--ease-out-expo) both; }
 .animate-number { animation: count-up var(--duration-enter) var(--ease-out-expo) both; }
+.highlight-flash { animation: highlightFlash 2s var(--ease-out-expo) both; border-radius: var(--radius-md); }
 
 /* Staggered children */
 .stagger-children > * { animation: fadeInUp var(--duration-enter) var(--ease-out-expo) both; }

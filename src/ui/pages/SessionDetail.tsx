@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import ConversationTurn, { groupIntoTurns } from '../components/ConversationTurn';
 import ScrollProgress from '../components/ScrollProgress';
@@ -60,8 +60,26 @@ export default function SessionDetail() {
   const { openPanel } = useContextPanel();
   const navigate = useNavigate();
 
+  const location = useLocation();
+
   // Enable [ / ] keyboard navigation between sessions
   useSessionNavigation(session?.projectId || '', session?.id || '');
+
+  // Scroll to message anchor from URL hash (e.g. #msg-abc123)
+  useEffect(() => {
+    if (!loading && session && location.hash) {
+      // Small delay to let the DOM render
+      const timer = setTimeout(() => {
+        const el = document.querySelector(location.hash);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('highlight-flash');
+          setTimeout(() => el.classList.remove('highlight-flash'), 2000);
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, session, location.hash]);
 
   if (loading) return <SessionSkeleton />;
   if (error) return <div className="p-6 text-sm" style={{ color: 'var(--color-accent-rose)' }}>Error: {error}</div>;

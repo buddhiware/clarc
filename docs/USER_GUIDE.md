@@ -296,7 +296,7 @@ Each result card shows:
 - **Project name** and **message type** badges (text or thinking)
 - **Date**
 - **Snippet** with the matching text highlighted
-- Click to jump to the full session
+- Click to jump directly to the matching message in the session — the page scrolls to the exact message and highlights it briefly with a purple flash so you can spot it immediately
 
 Results animate in with a staggered entrance effect.
 

@@ -97,7 +97,7 @@ export default function Search() {
           {results.map((r, i) => (
             <Link
               key={`${r.sessionId}-${r.messageUuid}-${i}`}
-              to={`/sessions/${r.sessionId}`}
+              to={`/sessions/${r.sessionId}#msg-${r.messageUuid}`}
               className="card block animate-fadeIn"
             >
               <div className="p-4">

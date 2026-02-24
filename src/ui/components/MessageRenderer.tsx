@@ -63,7 +63,7 @@ export default function MessageRenderer({ message, showThinking = true, onToolCl
     if (!cleaned) return null;
 
     return (
-      <div className="py-4 px-6 animate-fadeIn">
+      <div id={`msg-${message.uuid}`} className="py-4 px-6 animate-fadeIn">
         <div className="flex gap-3">
           {/* Avatar */}
           <div
@@ -108,6 +108,7 @@ export default function MessageRenderer({ message, showThinking = true, onToolCl
 
     return (
       <div
+        id={`msg-${message.uuid}`}
         className="py-4 px-6 animate-fadeIn"
         style={{ backgroundColor: 'var(--color-surface)' }}
       >
