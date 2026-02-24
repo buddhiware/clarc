@@ -56,6 +56,7 @@ export default function SessionDetail() {
   const { data: session, loading, error } = useApi<SessionData>(`/sessions/${id}`);
   const [showThinking, setShowThinking] = useState(true);
   const [idCopied, setIdCopied] = useState(false);
+  const [agentsExpanded, setAgentsExpanded] = useState(false);
   const { openPanel } = useContextPanel();
   const navigate = useNavigate();
 
@@ -165,26 +166,48 @@ export default function SessionDetail() {
           </div>
         </div>
 
-        {/* Agent chips */}
-        {session.agents.length > 0 && (
-          <div className="flex gap-2 mt-2 flex-wrap">
-            {session.agents.map(a => (
-              <button
-                key={a.agentId}
-                onClick={() => handleAgentClick(a.agentId)}
-                className="btn-ghost inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-                style={{
-                  backgroundColor: 'var(--color-surface-2)',
-                  color: 'var(--color-primary)',
-                }}
-              >
-                <ZapIcon size={10} />
-                agent:{a.agentId.slice(0, 8)}
-                {a.description && ` — ${a.description}`}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Agent chips — collapsed to one line with expand */}
+        {session.agents.length > 0 && (() => {
+          const maxVisible = 3;
+          const visible = agentsExpanded ? session.agents : session.agents.slice(0, maxVisible);
+          const hiddenCount = session.agents.length - maxVisible;
+          return (
+            <div className="flex gap-1.5 mt-2 flex-wrap items-center">
+              {visible.map(a => (
+                <button
+                  key={a.agentId}
+                  onClick={() => handleAgentClick(a.agentId)}
+                  className="btn-ghost inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: 'var(--color-surface-2)',
+                    color: 'var(--color-primary)',
+                  }}
+                >
+                  <ZapIcon size={10} />
+                  {a.agentId.slice(0, 8)}
+                </button>
+              ))}
+              {hiddenCount > 0 && !agentsExpanded && (
+                <button
+                  onClick={() => setAgentsExpanded(true)}
+                  className="text-xs px-2 py-0.5 rounded-full btn-ghost"
+                  style={{ color: 'var(--color-primary)' }}
+                >
+                  +{hiddenCount} more
+                </button>
+              )}
+              {agentsExpanded && hiddenCount > 0 && (
+                <button
+                  onClick={() => setAgentsExpanded(false)}
+                  className="text-xs px-2 py-0.5 rounded-full btn-ghost"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  less
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Conversation turns */}
