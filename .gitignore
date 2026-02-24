@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Build output
+dist/
+dist-binary/
+
+# Runtime
+*.log
+*.pid
+*.seed
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+credentials.json
+
+# Docker
+.docker/
+
+# Claude Code local settings
+.claude/
+
+# Temporary files
+*.tmp
+*.bak
+*.orig

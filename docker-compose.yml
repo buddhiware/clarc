@@ -1,0 +1,32 @@
+services:
+  clarc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3838:3838"
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ${HOME}/.claude:/home/claude-data:ro
+      - ${HOME}/.config/clarc:/home/clarc-config
+    environment:
+      - CLARC_CLAUDE_DIR=/home/claude-data
+      - CLARC_CONFIG_DIR=/home/clarc-config
+      - CLARC_PORT=3838
+      - HOST=0.0.0.0
+    stdin_open: true
+    tty: true
+
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./dist-binary:/app/output
+    command: sh -c "bun run build && cp clarc /app/output/clarc"
+    profiles:
+      - build
