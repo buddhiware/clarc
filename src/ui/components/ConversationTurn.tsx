@@ -59,17 +59,22 @@ export default function ConversationTurn({ messages, turnNumber, showThinking, c
   );
 }
 
-/** Group messages into conversation turns: each turn starts with a user message */
+/** Group messages into conversation turns: each turn starts with a user message (or each tool-result is its own turn) */
 export function groupIntoTurns(messages: Message[]): Message[][] {
   const turns: Message[][] = [];
   let current: Message[] = [];
 
   for (const msg of messages) {
-    if (msg.role === 'user' && current.length > 0) {
-      turns.push(current);
+    if (msg.type === 'tool-result') {
+      if (current.length > 0) turns.push(current);
+      turns.push([msg]);
       current = [];
+    } else if (msg.role === 'user' && current.length > 0) {
+      turns.push(current);
+      current = [msg];
+    } else {
+      current.push(msg);
     }
-    current.push(msg);
   }
 
   if (current.length > 0) {

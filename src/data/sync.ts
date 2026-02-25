@@ -13,7 +13,7 @@ const SYNC_TARGETS = [
 
 // File extension filters per top-level directory
 const DIR_FILTERS: Record<string, (filename: string) => boolean> = {
-  projects: (f) => f.endsWith('.jsonl'),
+  projects: (f) => f.endsWith('.jsonl') || f.endsWith('.txt'),
   todos: (f) => f.endsWith('.json'),
 };
 

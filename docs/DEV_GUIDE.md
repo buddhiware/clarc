@@ -485,7 +485,7 @@ The sync engine is the foundation of v0.2's data architecture. It copies data fr
 #### How it works
 
 1. An allowlist defines what to sync:
-   - `projects/` directory (only `.jsonl` files)
+   - `projects/` directory (`.jsonl` and `.txt` files — includes tool result caches)
    - `todos/` directory (only `.json` files)
    - `stats-cache.json` (single file)
    - `history.jsonl` (single file)
@@ -541,6 +541,8 @@ stopPeriodicSync(): void
 restartPeriodicSync(intervalMs: number): void
 ```
 
+**Cache invalidation:** After each sync (both initial and periodic), the scheduler calls `invalidateCache()` from `scanner.ts` to ensure the next `getIndex()` call produces a fresh index reflecting newly synced files.
+
 **Integration points:**
 - `src/server/index.ts` calls `await initSync()` at startup, then `startPeriodicSync()`
 - `src/cli/index.ts` has a `preAction` hook that calls `initSync()` before any CLI command (except `serve`, which handles its own sync)
@@ -558,6 +560,7 @@ restartPeriodicSync(intervalMs: number): void
    - Scans **all** assistant messages for token usage (input, output, cache read, cache create)
    - Estimates cost per session using `estimateCost()` from `pricing.ts`
    - Discovers sub-agents in `[sessionId]/subagents/agent-*.jsonl`
+   - **Detects orphan session directories** — UUID-named directories with no matching `.jsonl` file that contain `tool-results/*.txt` or `subagents/*.jsonl`. These get synthetic `SessionRef` entries with summary previews.
    - Loads matching task files from `${TODOS_DIR}`
 3. Sorts projects by last activity
 
@@ -603,7 +606,7 @@ getIndex(): Promise<ClarcIndex>
 reindex(): Promise<ClarcIndex>
 ```
 
-The index is cached in memory after first scan. Call `reindex()` (via `POST /api/reindex`) to refresh.
+The index is cached in memory after first scan. It is automatically invalidated after each sync cycle. Can also be manually refreshed via `reindex()` (`POST /api/reindex`).
 
 #### Error Handling
 
@@ -615,7 +618,7 @@ The index is cached in memory after first scan. Call `reindex()` (via `POST /api
 
 #### How it works
 
-1. Reads entire `.jsonl` file
+1. Reads entire `.jsonl` file (or, for tool-results-only sessions, reads `tool-results/*.txt` files from the session directory)
 2. Processes each line:
    - Extracts `queue-operation` entries for sub-agent linking
    - Skips `file-history-snapshot`, `queue-operation`, `progress` types

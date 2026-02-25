@@ -6,7 +6,13 @@ import { parseTodoFile } from './tasks';
 import { readStatsCache } from './stats';
 import { estimateCost } from '../shared/pricing';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 let cachedIndex: ClarcIndex | null = null;
+
+export function invalidateCache(): void {
+  cachedIndex = null;
+}
 
 export async function getIndex(): Promise<ClarcIndex> {
   if (cachedIndex) return cachedIndex;
@@ -133,6 +139,33 @@ async function scanProject(id: string, projectPath: string): Promise<Project> {
     }
   }
 
+  // Second pass: detect orphan session directories (UUID dirs with no matching .jsonl)
+  const scannedIds = new Set(sessions.map(s => s.id));
+  for (const entry of entries) {
+    if (!UUID_RE.test(entry) || scannedIds.has(entry)) continue;
+    try {
+      const dirPath = join(projectPath, entry);
+      const dirStat = await stat(dirPath);
+      if (!dirStat.isDirectory()) continue;
+
+      const ref = await scanOrphanSessionRef(entry, id, dirPath, dirStat);
+      if (!ref) continue;
+
+      sessions.push(ref);
+      if (dirStat.mtime > lastActiveAt) {
+        lastActiveAt = dirStat.mtime;
+      }
+      if (ref.messageCount) {
+        messageCount += ref.messageCount;
+      }
+      for (const agent of ref.agents) {
+        agents.push(agent);
+      }
+    } catch {
+      // skip unreadable directories
+    }
+  }
+
   // Sort sessions by modified date (newest first)
   sessions.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
 
@@ -250,6 +283,67 @@ async function scanSessionRef(
   }
 
   return ref;
+}
+
+async function scanOrphanSessionRef(
+  sessionId: string,
+  projectId: string,
+  dirPath: string,
+  dirStat: { mtime: Date },
+): Promise<SessionRef | null> {
+  const agentRefs: AgentRef[] = [];
+  let toolResultCount = 0;
+  let previewSnippet = '';
+
+  // Count tool-results
+  const toolResultsDir = join(dirPath, 'tool-results');
+  try {
+    const files = await readdir(toolResultsDir);
+    const txtFiles = files.filter(f => f.endsWith('.txt')).sort();
+    toolResultCount = txtFiles.length;
+
+    // Read first file for preview snippet
+    if (txtFiles.length > 0) {
+      try {
+        const firstFile = await readFile(join(toolResultsDir, txtFiles[0]), 'utf-8');
+        previewSnippet = firstFile.slice(0, 100).replace(/\n/g, ' ').trim();
+      } catch { /* skip unreadable */ }
+    }
+  } catch { /* no tool-results dir */ }
+
+  // Check for subagents
+  const subagentsDir = join(dirPath, 'subagents');
+  try {
+    const files = await readdir(subagentsDir);
+    for (const f of files) {
+      if (f.startsWith('agent-') && f.endsWith('.jsonl')) {
+        const agentId = f.replace('agent-', '').replace('.jsonl', '');
+        agentRefs.push({
+          agentId,
+          filePath: join(subagentsDir, f),
+          parentSessionId: sessionId,
+          projectId,
+        });
+      }
+    }
+  } catch { /* no subagents dir */ }
+
+  if (toolResultCount === 0 && agentRefs.length === 0) return null;
+
+  const summary = previewSnippet
+    ? `${toolResultCount} tool result${toolResultCount !== 1 ? 's' : ''} — ${previewSnippet}`
+    : `${toolResultCount} tool result${toolResultCount !== 1 ? 's' : ''}`;
+
+  return {
+    id: sessionId,
+    projectId,
+    filePath: dirPath,
+    fileSize: 0,
+    modifiedAt: dirStat.mtime,
+    summary: summary.slice(0, 200),
+    messageCount: toolResultCount,
+    agents: agentRefs,
+  };
 }
 
 async function loadProjectTasks(sessionIds: string[]): Promise<TaskList[]> {

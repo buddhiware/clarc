@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import ConversationTurn, { groupIntoTurns } from '../components/ConversationTurn';
@@ -52,7 +53,7 @@ function SessionSkeleton() {
   );
 }
 
-export default function SessionDetail() {
+function SessionDetailInner() {
   const { id } = useParams<{ id: string }>();
   const { data: session, loading, error } = useApi<SessionData>(`/sessions/${id}`);
   const [settings, updateSettings] = useSettings();
@@ -263,5 +264,30 @@ export default function SessionDetail() {
 
       <ScrollNav />
     </div>
+  );
+}
+
+class SessionErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('SessionDetail crash:', error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, color: '#e94560' }}>
+          <h2>SessionDetail crashed</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{this.state.error.message}{'\n'}{this.state.error.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function SessionDetail() {
+  return (
+    <SessionErrorBoundary>
+      <SessionDetailInner />
+    </SessionErrorBoundary>
   );
 }

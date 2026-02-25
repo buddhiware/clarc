@@ -102,9 +102,31 @@ export default function MessageRenderer({ message, showThinking = true, collapse
     );
   }
 
-  // Tool result messages
-  if (message.role === 'tool') {
+  // Paired tool results (inline with assistant tool calls) — skip
+  if (message.role === 'tool' && message.type !== 'tool-result') {
     return null;
+  }
+
+  // Standalone tool-result messages (from tool-results-only sessions)
+  if (message.type === 'tool-result') {
+    const raw = message.content
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text || '')
+      .join('\n');
+
+    // Strip line-number prefixes (e.g. "     1→") added by Claude Code's tool-result cache
+    const text = raw.replace(/^ *\d+→/gm, '');
+    const preview = text.slice(0, 500);
+
+    return (
+      <div id={`msg-${message.uuid}`} className="py-4 px-6">
+        <div style={{ padding: 12, border: '1px solid #444', borderRadius: 8, marginBottom: 8 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Tool Result: {message.uuid}</div>
+          <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>{time} — {text.length} chars</div>
+          <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 300, overflow: 'auto' }}>{preview}{text.length > 500 ? '\n...' : ''}</pre>
+        </div>
+      </div>
+    );
   }
 
   // Assistant messages

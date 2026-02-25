@@ -1,3 +1,5 @@
+import { readdir, stat as fsStat } from 'fs/promises';
+import { join, basename } from 'path';
 import type {
   Session, Message, ContentBlock, ThinkingBlock, ToolCall,
   SessionMetadata, TokenUsage, AgentRef,
@@ -16,6 +18,14 @@ export async function parseSession(
   // Check cache
   const cached = sessionCache.get(sessionId);
   if (cached) return cached.session;
+
+  // Detect tool-results-only sessions (filePath is a directory, not a .jsonl)
+  try {
+    const st = await fsStat(filePath);
+    if (st.isDirectory()) {
+      return parseToolResultSession(filePath, sessionId, projectId);
+    }
+  } catch { /* fall through to normal parsing */ }
 
   const text = await Bun.file(filePath).text();
   const lines = text.split('\n').filter(Boolean);
@@ -260,4 +270,74 @@ export function pairToolCalls(messages: Message[]): Message[] {
   }
 
   return messages;
+}
+
+async function parseToolResultSession(
+  dirPath: string,
+  sessionId: string,
+  projectId: string,
+): Promise<Session> {
+  const messages: Message[] = [];
+  const toolResultsDir = join(dirPath, 'tool-results');
+
+  try {
+    const files = await readdir(toolResultsDir);
+    const txtFiles = files.filter(f => f.endsWith('.txt')).sort();
+
+    for (const file of txtFiles) {
+      try {
+        const filePath = join(toolResultsDir, file);
+        const [content, fileStat] = await Promise.all([
+          Bun.file(filePath).text(),
+          fsStat(filePath),
+        ]);
+        const toolUseId = basename(file, '.txt');
+
+        messages.push({
+          uuid: toolUseId,
+          parentUuid: null,
+          type: 'tool-result',
+          role: 'tool',
+          content: [{ type: 'text', text: content }],
+          timestamp: fileStat.mtime,
+          rawLine: JSON.stringify({ type: 'tool-result', file, size: fileStat.size }),
+        });
+      } catch {
+        // skip unreadable files
+      }
+    }
+  } catch {
+    // no tool-results directory
+  }
+
+  messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+  const startedAt = messages[0]?.timestamp;
+  const endedAt = messages[messages.length - 1]?.timestamp;
+
+  const metadata: SessionMetadata = {
+    startedAt,
+    endedAt,
+    durationMs: startedAt && endedAt ? endedAt.getTime() - startedAt.getTime() : undefined,
+    totalMessages: messages.length,
+    tokenUsage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0 },
+    estimatedCostUsd: 0,
+  };
+
+  const session: Session = {
+    id: sessionId,
+    projectId,
+    messages,
+    agents: [],
+    metadata,
+  };
+
+  // Cache it
+  if (sessionCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = sessionCache.keys().next().value;
+    if (oldestKey) sessionCache.delete(oldestKey);
+  }
+  sessionCache.set(sessionId, { session, parsedAt: Date.now() });
+
+  return session;
 }
