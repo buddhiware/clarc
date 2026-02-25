@@ -5,6 +5,7 @@ bun.lock
 # Build output
 dist/
 dist-binary/
+dist-tauri/
 
 # Tauri
 src-tauri/target/

@@ -30,3 +30,12 @@ services:
     command: sh -c "bun run build && cp clarc /app/output/clarc"
     profiles:
       - build
+
+  tauri-build:
+    build:
+      context: .
+      dockerfile: Dockerfile.tauri
+    volumes:
+      - ./dist-tauri:/app/output
+    profiles:
+      - tauri

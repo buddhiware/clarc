@@ -1,0 +1,67 @@
+FROM ubuntu:24.04
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies for Tauri + Bun
+RUN apt-get update && apt-get install -y \
+    # Tauri build deps
+    libwebkit2gtk-4.1-dev \
+    build-essential \
+    curl \
+    wget \
+    file \
+    libxdo-dev \
+    libssl-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    # Additional tools
+    git \
+    unzip \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+# Install Rust (stable)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+
+# Copy dependency files first for caching
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile || bun install
+
+# Copy Rust dependency files for caching
+COPY src-tauri/Cargo.toml src-tauri/build.rs src-tauri/
+COPY src-tauri/src/ src-tauri/src/
+COPY src-tauri/capabilities/ src-tauri/capabilities/
+COPY src-tauri/tauri.conf.json src-tauri/
+
+# Pre-fetch Rust dependencies (cached layer)
+RUN cd src-tauri && cargo fetch
+
+# Copy rest of the source
+COPY . .
+
+# Build script:
+# 1. Build frontend (Vite)
+# 2. Build sidecar binary with platform target triple
+# 3. Build Tauri app (Rust compilation + bundling)
+CMD sh -c '\
+    set -e && \
+    echo "=== Building frontend ===" && \
+    bun run build:client && \
+    echo "=== Building sidecar ===" && \
+    TARGET=$(rustc --print host-tuple) && \
+    bun build --compile src/cli/main.ts --outfile "src-tauri/binaries/clarc-core-${TARGET}" && \
+    echo "=== Building Tauri app ===" && \
+    bun tauri build && \
+    echo "=== Copying output ===" && \
+    cp -r src-tauri/target/release/bundle/* /app/output/ && \
+    echo "=== Done ===" && \
+    ls -la /app/output/ \
+'
