@@ -5,11 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"vite --host 0.0.0.0 --port 5173\" \"bun --hot src/server/index.ts\"",
+    "dev:client": "vite --host 0.0.0.0 --port 5173",
+    "dev:tauri": "tauri dev",
     "build:client": "vite build",
     "build:server": "bun build --compile src/cli/main.ts --outfile clarc",
+    "build:core": "bun build --compile src/cli/main.ts --outfile src-tauri/binaries/clarc-core",
+    "build:tauri": "tauri build",
     "build": "vite build && bun build --compile src/cli/main.ts --outfile clarc",
     "preview": "bun src/server/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "tauri": "tauri"
   },
   "dependencies": {
     "hono": "^4.7.0",
@@ -23,6 +28,10 @@
     "recharts": "^2.15.3"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-process": "^2",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",

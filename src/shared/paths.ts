@@ -35,8 +35,12 @@ export const SYNC_INTERVAL_MS = parseIntOrUndefined(process.env.CLARC_SYNC_INTER
 export const DATA_DIR = process.env.CLARC_DATA_DIR ?? _config.dataDir ?? getDefaultDataDir();
 
 function getDefaultDataDir(): string {
+  // Tauri sidecar — use platform app data directory
+  if (process.env.CLARC_APP_DATA) {
+    return join(process.env.CLARC_APP_DATA, 'data');
+  }
   const execName = basename(process.execPath);
-  if (execName === 'clarc') {
+  if (execName === 'clarc' || execName.startsWith('clarc-core')) {
     // Compiled binary — store data next to it for portability
     return join(dirname(process.execPath), 'data');
   }

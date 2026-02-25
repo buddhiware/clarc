@@ -1,4 +1,4 @@
-.PHONY: dev dev-bg build shell run add test logs stop clean
+.PHONY: dev dev-bg build shell run add test logs stop clean tauri-dev tauri-build tauri-icons
 
 dev:
 	docker compose up --build
@@ -31,3 +31,16 @@ stop:
 clean:
 	docker compose down -v --rmi local
 	rm -rf dist-binary
+
+# --- Tauri desktop app ---
+
+tauri-dev:
+	bun tauri dev
+
+tauri-build:
+	TARGET=$$(rustc --print host-tuple) && \
+	bun build --compile src/cli/main.ts --outfile "src-tauri/binaries/clarc-core-$$TARGET" && \
+	bun tauri build
+
+tauri-icons:
+	bun tauri icon src-tauri/icons/app-icon.png

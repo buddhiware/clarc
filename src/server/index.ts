@@ -39,6 +39,8 @@ await initSync();
 startPeriodicSync();
 
 console.log(`clarc server listening on http://0.0.0.0:${PORT}`);
+// Readiness signal for Tauri sidecar — do not change this format
+console.log(`__CLARC_READY__ http://localhost:${PORT}`);
 
 export default {
   port: PORT,

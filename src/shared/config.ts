@@ -18,8 +18,12 @@ export interface ConfigValidationResult {
 
 /** Resolve the path to clarc.json — portable logic matches DATA_DIR in paths.ts */
 export function getConfigFilePath(): string {
+  // Tauri sidecar — config in platform app data directory
+  if (process.env.CLARC_APP_DATA) {
+    return join(process.env.CLARC_APP_DATA, 'clarc.json');
+  }
   const execName = basename(process.execPath);
-  if (execName === 'clarc') {
+  if (execName === 'clarc' || execName.startsWith('clarc-core')) {
     // Compiled binary — config next to binary
     return join(dirname(process.execPath), 'clarc.json');
   }

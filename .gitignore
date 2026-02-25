@@ -6,6 +6,10 @@ bun.lock
 dist/
 dist-binary/
 
+# Tauri
+src-tauri/target/
+src-tauri/binaries/clarc-core*
+
 # Synced session data (portable data directory)
 /data/
 
