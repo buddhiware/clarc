@@ -15,12 +15,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            sidecar_suffix: ""
           - os: macos-latest
             target: aarch64-apple-darwin
+            sidecar_suffix: ""
           - os: macos-13
             target: x86_64-apple-darwin
+            sidecar_suffix: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            sidecar_suffix: ".exe"
 
     runs-on: ${{ matrix.os }}
 
@@ -30,10 +34,15 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install dependencies
+      - name: Install Node.js dependencies
         run: bun install
 
       - name: Install Linux system dependencies
@@ -51,13 +60,16 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
+      - name: Build frontend
+        run: bun run build:client
+
       - name: Build sidecar binary
         shell: bash
         run: |
           bun build --compile src/cli/main.ts \
-            --outfile "src-tauri/binaries/clarc-core-${{ matrix.target }}"
+            --outfile "src-tauri/binaries/clarc-core-${{ matrix.target }}${{ matrix.sidecar_suffix }}"
 
-      - name: Build Tauri app
+      - name: Build Tauri app and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

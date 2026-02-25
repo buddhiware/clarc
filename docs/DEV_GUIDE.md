@@ -129,6 +129,10 @@ open http://localhost:5173
 | `make clean` | Remove containers, volumes, and built binaries |
 | `make logs` | Tail container logs |
 | `make add PKG=<name>` | Install a new dependency |
+| `make tauri-build` | Build Tauri desktop app via Docker (Linux `.deb`/`.rpm`) |
+| `make tauri-build-host` | Build Tauri desktop app on host (requires Bun + Rust) |
+| `make tauri-dev` | Run Tauri dev mode on host (native window + HMR) |
+| `make tauri-icons` | Generate app icons from source PNG |
 
 ### Golden Rule
 
@@ -140,7 +144,7 @@ open http://localhost:5173
 
 ### Container Architecture
 
-The `docker-compose.yml` defines two services:
+The `docker-compose.yml` defines three services:
 
 #### `clarc` (main dev container)
 
@@ -163,6 +167,15 @@ The sync layer copies files from `/home/claude-data` (the read-only mount) into 
 - Activated with `make build` or `docker compose run --rm build`
 - Runs `vite build` + `bun build --compile`
 - Outputs binary to `./dist-binary/clarc` on the host
+
+#### `tauri-build` (Tauri desktop app compilation)
+
+- Activated with `make tauri-build` or `docker compose run --rm tauri-build`
+- Uses `Dockerfile.tauri` (Ubuntu 24.04 + Bun + Rust + WebKit2GTK libs)
+- Build steps: Vite frontend build → Bun sidecar compilation → Rust/Tauri compilation → `.deb`/`.rpm` bundling
+- Outputs to `./dist-tauri/deb/` and `./dist-tauri/rpm/` on the host
+- AppImage is skipped in Docker (requires FUSE, unavailable in containers)
+- Note: The Tauri build compiles ~200+ Rust crates on first run (~2-3 min); subsequent builds are faster due to Docker layer caching
 
 ### WSL2 Notes
 
@@ -190,8 +203,9 @@ HOST (your terminal / Claude Code)          DOCKER CONTAINER
 
 ```
 ClArc/
-├── Dockerfile                    # Container image definition
-├── docker-compose.yml            # Service orchestration
+├── Dockerfile                    # Container image definition (Alpine + Bun)
+├── Dockerfile.tauri              # Tauri build container (Ubuntu 24.04 + Bun + Rust)
+├── docker-compose.yml            # Service orchestration (clarc, build, tauri-build)
 ├── Makefile                      # Convenience commands
 ├── package.json                  # Dependencies and scripts
 ├── tsconfig.json                 # TypeScript configuration
@@ -201,9 +215,28 @@ ClArc/
 ├── .gitignore                    # Git exclusions
 ├── DATAFORMAT.md                 # ~/.claude/ data format documentation
 │
+├── .github/
+│   └── workflows/
+│       └── release.yml           # Cross-platform CI (Linux, macOS, Windows)
+│
 ├── docs/
 │   ├── DEV_GUIDE.md              # This file
-│   └── USER_GUIDE.md             # End-user guide
+│   ├── USER_GUIDE.md             # End-user guide
+│   └── TAURI_PLAN.md             # Tauri architecture plan
+│
+├── src-tauri/                    # Tauri v2 desktop app (Rust)
+│   ├── Cargo.toml                # Rust dependencies
+│   ├── build.rs                  # Tauri build script
+│   ├── tauri.conf.json           # App config, window, CSP, sidecar, plugins
+│   ├── capabilities/
+│   │   └── default.json          # Shell sidecar and process permissions
+│   ├── loading/
+│   │   └── index.html            # Animated splash screen (shown while sidecar starts)
+│   ├── icons/                    # App icons (all sizes + .ico/.icns)
+│   ├── binaries/                 # Sidecar binaries (clarc-core-{target}, gitignored)
+│   └── src/
+│       ├── lib.rs                # Core: port discovery, sidecar spawn, system tray
+│       └── main.rs               # Rust entry point
 │
 ├── src/
 │   ├── shared/                   # Shared across all layers
@@ -1312,6 +1345,54 @@ clarc search "bug" # CLI: search sessions (syncs first)
 ```
 
 The binary reads `~/.claude` as the source directory and syncs to `./data/` next to the binary. Settings can be configured via `./clarc.json` next to the binary or via the Settings page in the web UI. No Docker needed.
+
+### Build the Desktop App (Tauri)
+
+#### Via Docker (Linux only)
+
+```bash
+make tauri-build
+# → Outputs: dist-tauri/deb/clarc_0.2.0_amd64.deb
+#            dist-tauri/rpm/clarc-0.2.0-1.x86_64.rpm
+```
+
+#### On Host (any platform, requires Bun + Rust)
+
+```bash
+make tauri-build-host
+# → Outputs: src-tauri/target/release/bundle/ (platform-specific installer)
+```
+
+#### Via GitHub Actions CI (all platforms)
+
+Push a version tag to trigger cross-platform builds:
+
+```bash
+git tag v0.2.0
+git push --tags
+# → Builds for Linux x64, macOS ARM, macOS Intel, Windows x64
+# → Creates a draft GitHub Release with all installers
+```
+
+The CI workflow (`.github/workflows/release.yml`) builds all 4 targets in parallel using `tauri-apps/tauri-action`.
+
+### Tauri Architecture
+
+```
+Tauri App Shell (Rust)
+├── System WebView (loads splash screen, then navigates to sidecar URL)
+│   └── fetch('/api/...') → HTTP localhost:PORT
+└── Bun Sidecar (clarc-core)
+    ├── Hono API server (serves frontend + API)
+    ├── Data sync engine
+    └── Session parser
+```
+
+- The Rust shell finds a free port via `portpicker`, spawns `clarc-core --port N` with `CLARC_APP_DATA` env var
+- The sidecar prints `__CLARC_READY__ http://localhost:PORT` on stdout when ready
+- The Rust code watches for this signal and navigates the webview to the sidecar URL
+- System tray with Show/Quit menu; sidecar is killed on window close or quit
+- In dev mode (`make tauri-dev`), the webview loads from Vite HMR at `localhost:5173`
 
 ---
 

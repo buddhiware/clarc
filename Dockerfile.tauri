@@ -59,7 +59,7 @@ CMD sh -c '\
     TARGET=$(rustc --print host-tuple) && \
     bun build --compile src/cli/main.ts --outfile "src-tauri/binaries/clarc-core-${TARGET}" && \
     echo "=== Building Tauri app ===" && \
-    bun tauri build && \
+    bun tauri build --bundles deb rpm && \
     echo "=== Copying output ===" && \
     cp -r src-tauri/target/release/bundle/* /app/output/ && \
     echo "=== Done ===" && \

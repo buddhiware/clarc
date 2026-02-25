@@ -4,9 +4,17 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "shell:allow-spawn",
-    "shell:allow-execute",
     "shell:default",
-    "process:default"
+    "process:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/clarc-core",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    }
   ]
 }

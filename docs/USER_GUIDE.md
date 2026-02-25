@@ -59,7 +59,34 @@ clarc
 # Opens web UI on http://localhost:3838
 ```
 
-### Option C: Run directly with Bun (no Docker)
+### Option C: Desktop App (Tauri)
+
+clarc can be built as a native desktop application with an embedded webview — no browser needed. The app bundles the Bun backend as a sidecar binary and wraps it in a native window with system tray support.
+
+**From GitHub Releases** (easiest):
+
+Download the installer for your platform from the [Releases](../../releases) page:
+- **Windows**: `.msi` installer
+- **macOS**: `.dmg` (Apple Silicon and Intel)
+- **Linux**: `.deb` or `.rpm`
+
+**Build locally** (requires Bun + Rust on the host):
+
+```bash
+cd ClArc
+make tauri-build-host
+# Output: src-tauri/target/release/bundle/
+```
+
+**Build via Docker** (Linux packages only):
+
+```bash
+cd ClArc
+make tauri-build
+# Output: dist-tauri/deb/ and dist-tauri/rpm/
+```
+
+### Option D: Run directly with Bun (no Docker)
 
 Requires: [Bun](https://bun.sh) installed on your system.
 

@@ -116,7 +116,8 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // Kill the sidecar when the window closes
                 let state = window.state::<Mutex<AppState>>();
-                if let Some(child) = state.lock().unwrap().sidecar_child.take() {
+                let mut guard = state.lock().unwrap();
+                if let Some(child) = guard.sidecar_child.take() {
                     let _ = child.kill();
                 }
             }
@@ -146,9 +147,11 @@ fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "quit" => {
                 // Kill sidecar before exiting
                 let state = app.state::<Mutex<AppState>>();
-                if let Some(child) = state.lock().unwrap().sidecar_child.take() {
+                let mut guard = state.lock().unwrap();
+                if let Some(child) = guard.sidecar_child.take() {
                     let _ = child.kill();
                 }
+                drop(guard);
                 app.exit(0);
             }
             _ => {}
