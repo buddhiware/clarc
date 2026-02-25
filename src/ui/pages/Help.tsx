@@ -64,7 +64,7 @@ export default function Help() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gradient mb-2">clarc Help</h1>
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          Everything you need to know about using the Claude Archive.
+          Everything you need to know about using clarc.
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export default function Help() {
       {/* Sections */}
       <Section id="welcome" title="Welcome">
         <P>
-          <strong style={{ color: 'var(--color-text)' }}>clarc</strong> (Claude Archive) is a local tool that reads your Claude Code
+          <strong style={{ color: 'var(--color-text)' }}>clarc</strong> (inspired by the idea of a Claude archive) is a local tool that reads your Claude Code
           session history from <code>~/.claude/</code> and presents it as a browsable web interface with search,
           analytics, markdown export, and sub-agent visualization.
         </P>
@@ -403,7 +403,7 @@ export default function Help() {
 
       {/* Footer */}
       <div className="mt-12 pt-6 text-center text-xs" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
-        clarc v0.2 &middot; Claude Archive
+        clarc v0.2
       </div>
     </div>
   );

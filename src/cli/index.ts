@@ -9,7 +9,7 @@ const program = new Command();
 
 program
   .name('clarc')
-  .description('Claude Archive — browse, search, and analyze your Claude Code history')
+  .description('clarc — browse, search, and analyze your Claude Code history')
   .version('0.2.0');
 
 // Sync data before any command that reads it
@@ -38,7 +38,7 @@ program
     const index = await getIndex();
     const stats = index.globalStats;
 
-    console.log('clarc — Claude Archive Status');
+    console.log('clarc — Status');
     console.log('─'.repeat(40));
     console.log(`Projects:       ${index.projects.length}`);
     console.log(`Sessions:       ${index.projects.reduce((s, p) => s + p.sessions.length, 0)}`);

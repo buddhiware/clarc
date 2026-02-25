@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import { GridIcon, BarChartIcon, SearchIcon, CheckSquareIcon, HelpCircleIcon, SettingsIcon, FolderIcon, ChevronRightIcon, SidebarIcon } from './Icons';
+import { useSettings, isProjectArchived, toggleProjectArchived } from '../hooks/useSettings';
+import { GridIcon, BarChartIcon, SearchIcon, CheckSquareIcon, HelpCircleIcon, SettingsIcon, FolderIcon, ChevronRightIcon, SidebarIcon, ArchiveIcon } from './Icons';
 
 interface ProjectSummary {
   id: string;
@@ -21,11 +22,19 @@ const NAV_ITEMS = [
 export default function Sidebar({ onToggle }: { onToggle: () => void }) {
   const { data: projects } = useApi<ProjectSummary[]>('/projects');
   const [filter, setFilter] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [settings, updateSettings] = useSettings();
   const location = useLocation();
 
-  const filtered = projects?.filter(p =>
-    p.name.toLowerCase().includes(filter.toLowerCase())
-  ) || [];
+  const filtered = (projects?.filter(p => {
+    const matchesFilter = p.name.toLowerCase().includes(filter.toLowerCase());
+    if (!matchesFilter) return false;
+    // When searching, show all matches regardless of archive state
+    if (filter.trim()) return true;
+    // When not searching, respect the archive toggle
+    const archived = isProjectArchived(settings, p.id);
+    return showArchived || !archived;
+  }) || []);
 
   const isHelpActive = location.pathname === '/help';
   const isSettingsActive = location.pathname === '/settings';
@@ -96,54 +105,85 @@ export default function Sidebar({ onToggle }: { onToggle: () => void }) {
 
       {/* Project list — scrollable */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        <div
-          className="text-xs font-semibold uppercase tracking-wider px-3 py-1.5"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
-          Projects ({filtered.length})
+        <div className="flex items-center justify-between px-3 py-1.5">
+          <span
+            className="text-xs font-semibold uppercase tracking-wider"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            Projects ({filtered.length})
+          </span>
+          {settings.archivedProjects.length > 0 && (
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded btn-ghost"
+              style={{ color: showArchived ? 'var(--color-primary)' : 'var(--color-text-muted)' }}
+              title={showArchived ? 'Hide archived projects' : `Show ${settings.archivedProjects.length} archived`}
+            >
+              <ArchiveIcon size={11} />
+              {showArchived ? 'Hide' : settings.archivedProjects.length} archived
+            </button>
+          )}
         </div>
         {filtered.map(p => {
           const isActive = location.pathname.includes(p.id);
+          const archived = isProjectArchived(settings, p.id);
           return (
-            <Link
-              key={p.id}
-              to={`/projects/${encodeURIComponent(p.id)}`}
-              className="group/proj flex items-center gap-2.5 px-3 py-2.5 rounded-lg mb-0.5"
-              style={{
-                backgroundColor: isActive ? 'var(--color-surface-2)' : 'transparent',
-                transition: 'background-color var(--duration-fast) ease',
-              }}
-              onMouseEnter={e => {
-                if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)';
-              }}
-              onMouseLeave={e => {
-                if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-              }}
-            >
-              <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
-                <FolderIcon size={14} />
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
-                  {p.name}
-                </div>
-                <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  {p.sessionCount} sessions &middot; {p.messageCount} msgs
-                  {p.lastActiveAt && p.lastActiveAt !== '1970-01-01T00:00:00.000Z' && (
-                    <> &middot; {timeAgo(p.lastActiveAt)}</>
-                  )}
-                </div>
-              </div>
-              <span
-                className="opacity-0 group-hover/proj:opacity-100 flex-shrink-0"
+            <div key={p.id} className="group/proj flex items-center mb-0.5 relative">
+              <Link
+                to={`/projects/${encodeURIComponent(p.id)}`}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg flex-1 min-w-0"
                 style={{
-                  color: 'var(--color-text-muted)',
-                  transition: 'opacity var(--duration-fast) ease',
+                  backgroundColor: isActive ? 'var(--color-surface-2)' : 'transparent',
+                  opacity: archived ? 0.5 : 1,
+                  transition: 'background-color var(--duration-fast) ease, opacity var(--duration-fast) ease',
+                }}
+                onMouseEnter={e => {
+                  if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)';
+                }}
+                onMouseLeave={e => {
+                  if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
                 }}
               >
-                <ChevronRightIcon size={14} />
-              </span>
-            </Link>
+                <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                  <FolderIcon size={14} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
+                    {p.name}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    {p.sessionCount} sessions &middot; {p.messageCount} msgs
+                    {p.lastActiveAt && p.lastActiveAt !== '1970-01-01T00:00:00.000Z' && (
+                      <> &middot; {timeAgo(p.lastActiveAt)}</>
+                    )}
+                  </div>
+                </div>
+                <span
+                  className="opacity-0 group-hover/proj:opacity-100 flex-shrink-0"
+                  style={{
+                    color: 'var(--color-text-muted)',
+                    transition: 'opacity var(--duration-fast) ease',
+                  }}
+                >
+                  <ChevronRightIcon size={14} />
+                </span>
+              </Link>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleProjectArchived(settings, updateSettings, p.id);
+                }}
+                className="absolute right-8 opacity-0 group-hover/proj:opacity-100 btn-ghost p-1 rounded"
+                style={{
+                  color: archived ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                  transition: 'opacity var(--duration-fast) ease',
+                }}
+                title={archived ? 'Unarchive project' : 'Archive project'}
+              >
+                <ArchiveIcon size={12} />
+              </button>
+            </div>
           );
         })}
       </div>

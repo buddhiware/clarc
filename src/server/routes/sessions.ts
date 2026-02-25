@@ -4,6 +4,42 @@ import { parseSession, pairToolCalls } from '../../data/parser';
 
 const app = new Hono();
 
+// GET /api/sessions/bookmarks?ids=id1,id2,id3 — summary data for bookmarked sessions
+app.get('/bookmarks', async (c) => {
+  const idsParam = c.req.query('ids') || '';
+  const ids = idsParam.split(',').filter(Boolean);
+  if (ids.length === 0) return c.json({ sessions: [] });
+
+  const index = await getIndex();
+  const results: any[] = [];
+
+  for (const id of ids) {
+    for (const project of index.projects) {
+      const ref = project.sessions.find(s => s.id === id);
+      if (ref) {
+        try {
+          const session = await parseSession(ref.filePath, ref.id, ref.projectId);
+          results.push({
+            id: ref.id,
+            projectId: project.id,
+            projectName: project.name,
+            slug: session.metadata.slug || ref.id.slice(0, 8),
+            model: session.metadata.model,
+            messageCount: session.metadata.totalMessages,
+            costUsd: session.metadata.estimatedCostUsd,
+            startedAt: session.metadata.startedAt,
+          });
+        } catch {
+          // skip sessions that fail to parse
+        }
+        break;
+      }
+    }
+  }
+
+  return c.json({ sessions: results });
+});
+
 // GET /api/sessions/:id — full parsed session
 app.get('/:id', async (c) => {
   const id = c.req.param('id');

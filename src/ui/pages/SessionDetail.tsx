@@ -7,9 +7,9 @@ import ScrollNav from '../components/ScrollNav';
 import Badge from '../components/Badge';
 import { Skeleton, SkeletonGroup } from '../components/Skeleton';
 import { useContextPanel } from '../components/ContextPanelProvider';
-import { ChevronRightIcon, ZapIcon, CopyIcon, CheckIcon } from '../components/Icons';
+import { ChevronRightIcon, ZapIcon, CopyIcon, CheckIcon, StarIcon, StarFilledIcon } from '../components/Icons';
 import { useSessionNavigation } from '../hooks/useSessionNavigation';
-import { useSettings } from '../hooks/useSettings';
+import { useSettings, isSessionBookmarked, toggleSessionBookmark } from '../hooks/useSettings';
 
 interface SessionData {
   id: string;
@@ -55,8 +55,9 @@ function SessionSkeleton() {
 export default function SessionDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: session, loading, error } = useApi<SessionData>(`/sessions/${id}`);
-  const [settings] = useSettings();
+  const [settings, updateSettings] = useSettings();
   const [showThinking, setShowThinking] = useState(settings.defaultShowThinking);
+  const bookmarked = session ? isSessionBookmarked(settings, session.id) : false;
   const [idCopied, setIdCopied] = useState(false);
   const [agentsExpanded, setAgentsExpanded] = useState(false);
   const { openPanel } = useContextPanel();
@@ -166,6 +167,17 @@ export default function SessionDetail() {
           </div>
 
           <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={() => toggleSessionBookmark(settings, updateSettings, session.id)}
+              className="btn-ghost text-xs px-2 py-1.5 rounded-lg"
+              style={{
+                border: '1px solid var(--color-border)',
+                color: bookmarked ? 'var(--color-accent-amber)' : undefined,
+              }}
+              title={bookmarked ? 'Remove bookmark' : 'Bookmark session'}
+            >
+              {bookmarked ? <StarFilledIcon size={14} /> : <StarIcon size={14} />}
+            </button>
             <button
               onClick={() => setShowThinking(!showThinking)}
               className="btn-ghost text-xs px-3 py-1.5 rounded-lg"

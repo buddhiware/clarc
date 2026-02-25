@@ -1,23 +1,38 @@
 import { homedir } from 'os';
 import { join, dirname, basename } from 'path';
+import { readConfigSync, getConfigFilePath } from './config';
+
+// Load config file once at module init (synchronous)
+const _config = readConfigSync();
+
+/** Parse an env var as an integer, returning undefined if unset or invalid */
+function parseIntOrUndefined(s: string | undefined): number | undefined {
+  if (!s) return undefined;
+  const n = parseInt(s, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+// Export config file location for settings UI
+export const CONFIG_FILE = getConfigFilePath();
 
 // Source directory (where Claude Code writes data — read-only)
-export const SOURCE_DIR = process.env.CLARC_CLAUDE_DIR || join(homedir(), '.claude');
+// Priority: env var > config file > default
+export const SOURCE_DIR = process.env.CLARC_CLAUDE_DIR ?? _config.sourceDir ?? join(homedir(), '.claude');
 
 // clarc's own config directory
 export const CONFIG_DIR = process.env.CLARC_CONFIG_DIR || join(homedir(), '.config', 'clarc');
 
 // Port
-export const PORT = parseInt(process.env.CLARC_PORT || '3838', 10);
+export const PORT = parseIntOrUndefined(process.env.CLARC_PORT) ?? _config.port ?? 3838;
 
 // Sync interval (ms), default 5 minutes
-export const SYNC_INTERVAL_MS = parseInt(process.env.CLARC_SYNC_INTERVAL_MS || '300000', 10);
+export const SYNC_INTERVAL_MS = parseIntOrUndefined(process.env.CLARC_SYNC_INTERVAL_MS) ?? _config.syncIntervalMs ?? 300000;
 
 // Portable data directory
 // - Compiled binary: data/ next to the executable (portable)
 // - Dev mode / bun run: CONFIG_DIR/data (unchanged behavior)
-// - Explicit override: CLARC_DATA_DIR env var
-export const DATA_DIR = process.env.CLARC_DATA_DIR || getDefaultDataDir();
+// - Explicit override: CLARC_DATA_DIR env var > config file > default
+export const DATA_DIR = process.env.CLARC_DATA_DIR ?? _config.dataDir ?? getDefaultDataDir();
 
 function getDefaultDataDir(): string {
   const execName = basename(process.execPath);

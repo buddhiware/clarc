@@ -4,7 +4,9 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import StatCard from '../components/StatCard';
 import ChartCard from '../components/ChartCard';
 import { Skeleton, SkeletonGroup } from '../components/Skeleton';
-import { FolderIcon, MessageIcon, ZapIcon, DollarIcon, ChevronRightIcon } from '../components/Icons';
+import { FolderIcon, MessageIcon, ZapIcon, DollarIcon, ChevronRightIcon, StarFilledIcon } from '../components/Icons';
+import { useSettings, toggleSessionBookmark } from '../hooks/useSettings';
+import Badge from '../components/Badge';
 
 interface Status {
   projectCount: number;
@@ -34,6 +36,17 @@ interface ProjectSummary {
   messageCount: number;
 }
 
+interface BookmarkedSession {
+  id: string;
+  projectId: string;
+  projectName: string;
+  slug: string;
+  model?: string;
+  messageCount: number;
+  costUsd: number;
+  startedAt?: string;
+}
+
 function DashboardSkeleton() {
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -54,6 +67,13 @@ export default function Dashboard() {
   const { data: status } = useApi<Status>('/status');
   const { data: analytics } = useApi<Analytics>('/analytics');
   const { data: projects } = useApi<ProjectSummary[]>('/projects');
+  const [settings, updateSettings] = useSettings();
+  const bookmarkIds = settings.bookmarkedSessions;
+  const { data: bookmarksData } = useApi<{ sessions: BookmarkedSession[] }>(
+    `/sessions/bookmarks?ids=${bookmarkIds.join(',')}`,
+    [bookmarkIds.join(',')],
+  );
+  const bookmarkedSessions = bookmarksData?.sessions || [];
 
   if (!status) return <DashboardSkeleton />;
 
@@ -105,6 +125,58 @@ export default function Dashboard() {
           icon={<DollarIcon size={20} />}
         />
       </div>
+
+      {/* Bookmarked Sessions */}
+      {bookmarkedSessions.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2" style={{ color: 'var(--color-text)' }}>
+            <StarFilledIcon size={18} />
+            Bookmarked Sessions
+          </h2>
+          <div className="grid gap-3 stagger-children">
+            {bookmarkedSessions.map(s => (
+              <div
+                key={s.id}
+                className="card group/bm"
+              >
+                <div className="p-4 flex items-center gap-3">
+                  <Link
+                    to={`/sessions/${s.id}`}
+                    className="flex-1 min-w-0 flex items-center gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium" style={{ color: 'var(--color-text)' }}>{s.slug}</div>
+                      <div className="text-sm flex items-center gap-2 flex-wrap" style={{ color: 'var(--color-text-muted)' }}>
+                        <span>{s.projectName}</span>
+                        {s.model && <Badge variant="model">{s.model.replace('claude-', '')}</Badge>}
+                        <span>{s.messageCount} msgs</span>
+                        <span>${s.costUsd.toFixed(4)}</span>
+                        {s.startedAt && (
+                          <span>{new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span
+                      className="opacity-0 group-hover/bm:opacity-100 flex-shrink-0"
+                      style={{ color: 'var(--color-text-muted)', transition: 'opacity var(--duration-fast) ease' }}
+                    >
+                      <ChevronRightIcon size={16} />
+                    </span>
+                  </Link>
+                  <button
+                    onClick={() => toggleSessionBookmark(settings, updateSettings, s.id)}
+                    className="btn-ghost p-1.5 rounded flex-shrink-0"
+                    style={{ color: 'var(--color-accent-amber)' }}
+                    title="Remove bookmark"
+                  >
+                    <StarFilledIcon size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Activity chart */}
       {analytics?.dailyActivity && analytics.dailyActivity.length > 0 && (

@@ -33,3 +33,8 @@ export function stopPeriodicSync(): void {
     syncTimer = null;
   }
 }
+
+export function restartPeriodicSync(intervalMs: number): void {
+  stopPeriodicSync();
+  startPeriodicSync(intervalMs);
+}

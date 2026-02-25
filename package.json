@@ -1,7 +1,7 @@
 {
   "name": "clarc",
   "version": "0.1.0",
-  "description": "Claude Archive — browse, search, and analyze your Claude Code history",
+  "description": "clarc — browse, search, and analyze your Claude Code history",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"vite --host 0.0.0.0 --port 5173\" \"bun --hot src/server/index.ts\"",

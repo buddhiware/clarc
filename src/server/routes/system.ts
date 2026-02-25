@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import { getIndex, reindex } from '../../data/scanner';
-import { SOURCE_DIR, CONFIG_DIR, DATA_DIR, PORT, SYNC_INTERVAL_MS } from '../../shared/paths';
+import { SOURCE_DIR, CONFIG_DIR, DATA_DIR, PORT, SYNC_INTERVAL_MS, CONFIG_FILE } from '../../shared/paths';
+import { readConfig, writeConfig, validateConfig, type ClarcConfig } from '../../shared/config';
 import { getSyncStatus } from '../../data/sync';
 import { runSync } from '../../data/sync';
+import { restartPeriodicSync } from '../../data/sync-scheduler';
 
 const app = new Hono();
 
@@ -48,14 +50,66 @@ app.post('/reindex', async (c) => {
 });
 
 // GET /api/settings/info — runtime info for the settings page
-app.get('/settings/info', (c) => {
+app.get('/settings/info', async (c) => {
+  const configFile = await readConfig();
+
   return c.json({
     sourceDir: SOURCE_DIR,
     dataDir: DATA_DIR,
     syncIntervalMs: SYNC_INTERVAL_MS,
     port: PORT,
     version: '0.2.0',
+    configFilePath: CONFIG_FILE,
+    configFile,
+    envOverrides: {
+      sourceDir: !!process.env.CLARC_CLAUDE_DIR,
+      dataDir: !!process.env.CLARC_DATA_DIR,
+      port: !!process.env.CLARC_PORT,
+      syncIntervalMs: !!process.env.CLARC_SYNC_INTERVAL_MS,
+    },
   });
+});
+
+// POST /api/settings/config — validate and save clarc.json
+app.post('/settings/config', async (c) => {
+  const body = await c.req.json<Record<string, any>>();
+  const existing = await readConfig();
+
+  // Merge: explicit null removes the field (reverts to default)
+  const merged: ClarcConfig = { ...existing };
+  if ('sourceDir' in body) merged.sourceDir = body.sourceDir ?? undefined;
+  if ('dataDir' in body) merged.dataDir = body.dataDir ?? undefined;
+  if ('port' in body) merged.port = body.port ?? undefined;
+  if ('syncIntervalMs' in body) merged.syncIntervalMs = body.syncIntervalMs ?? undefined;
+
+  // Strip undefined values
+  const clean: ClarcConfig = {};
+  if (merged.sourceDir !== undefined) clean.sourceDir = merged.sourceDir;
+  if (merged.dataDir !== undefined) clean.dataDir = merged.dataDir;
+  if (merged.port !== undefined) clean.port = merged.port;
+  if (merged.syncIntervalMs !== undefined) clean.syncIntervalMs = merged.syncIntervalMs;
+
+  // Validate
+  const result = await validateConfig(clean);
+  if (!result.valid) {
+    return c.json({ saved: false, ...result }, 400);
+  }
+
+  // Write config to disk
+  await writeConfig(clean);
+
+  // Hot-reload sync interval if changed
+  if ('syncIntervalMs' in body && clean.syncIntervalMs !== undefined) {
+    restartPeriodicSync(clean.syncIntervalMs);
+  }
+
+  // Determine if a restart is needed
+  const restartRequired =
+    ('sourceDir' in body && body.sourceDir !== (existing.sourceDir ?? null)) ||
+    ('dataDir' in body && body.dataDir !== (existing.dataDir ?? null)) ||
+    ('port' in body && body.port !== (existing.port ?? null));
+
+  return c.json({ saved: true, config: clean, restartRequired, ...result });
 });
 
 export default app;

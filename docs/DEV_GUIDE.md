@@ -1,6 +1,6 @@
 # clarc Developer Guide
 
-A comprehensive guide for developers working on clarc (Claude Archive) v0.2.
+A comprehensive guide for developers working on clarc v0.2.
 
 ---
 
@@ -81,7 +81,7 @@ clarc is a full-stack TypeScript application with five layers:
 | Typography | Inter (UI), JetBrains Mono (code) | Google Fonts loaded in `index.html` |
 | Markdown | react-markdown, remark-gfm | Renders markdown content |
 | Charts | Recharts 2.x | Data visualization (6 chart types wired across Dashboard and Analytics) |
-| Icons | Custom inline SVGs (`Icons.tsx`) | ~30 icons, no external icon library |
+| Icons | Custom inline SVGs (`Icons.tsx`) | ~35 icons, no external icon library |
 | CLI | Commander 13 | Command-line interface |
 | Build | Vite 6.x | Frontend bundling and HMR |
 | Container | Docker + Docker Compose | Isolated development environment |
@@ -207,6 +207,7 @@ ClArc/
 │
 ├── src/
 │   ├── shared/                   # Shared across all layers
+│   │   ├── config.ts             # clarc.json config file I/O, validation, types
 │   │   ├── paths.ts              # Centralized path configuration (SOURCE_DIR, DATA_DIR, etc.)
 │   │   ├── types.ts              # All TypeScript interfaces (including sync types)
 │   │   └── pricing.ts            # Model pricing & cost estimation
@@ -223,12 +224,12 @@ ClArc/
 │   │   ├── index.ts              # Hono app, middleware, static serving, sync init
 │   │   └── routes/               # Route handlers
 │   │       ├── projects.ts       # GET /api/projects[/:id]
-│   │       ├── sessions.ts       # GET /api/sessions/:id, /api/sessions/agents/...
+│   │       ├── sessions.ts       # GET /api/sessions/:id, /bookmarks, /agents/...
 │   │       ├── tasks.ts          # GET /api/tasks[/:sessionId]
 │   │       ├── analytics.ts      # GET /api/analytics[/model-usage|cost|heatmap]
 │   │       ├── search.ts         # GET /api/search?q=...
 │   │       ├── export.ts         # GET /api/export/session/:id[/preview]
-│   │       ├── system.ts         # GET /api/status, GET /api/settings/info, POST /api/reindex
+│   │       ├── system.ts         # GET /api/status, /settings/info, POST /settings/config, /reindex
 │   │       └── sync.ts           # GET /api/sync/status, POST /api/sync
 │   │
 │   ├── cli/                      # Command-line interface
@@ -254,7 +255,7 @@ ClArc/
 │       │   ├── ToolCallBlock.tsx  # Collapsible tool call (per-tool icons, panel support)
 │       │   ├── CodeBlock.tsx      # Code block (macOS dots, copy animation)
 │       │   ├── KeyboardShortcuts.tsx # Shortcut overlay (backdrop blur, scaleIn, key styling)
-│       │   ├── Icons.tsx          # ~30 inline SVG icons (no external library)
+│       │   ├── Icons.tsx          # ~35 inline SVG icons (no external library)
 │       │   ├── Skeleton.tsx       # Shimmer loading placeholders
 │       │   ├── PageTransition.tsx # Route-keyed fadeInUp animation wrapper
 │       │   ├── StatCard.tsx       # Gradient-bordered stat cards
@@ -277,7 +278,7 @@ ClArc/
 │           ├── Tasks.tsx          # Colored column headers, pulsing blocked dots
 │           ├── MarkdownPreview.tsx # Glass toolbar, toggle switches
 │           ├── Help.tsx           # In-app help/guide page
-│           └── Settings.tsx       # Settings page (theme, collapse, thinking, data info)
+│           └── Settings.tsx       # Settings page (theme, collapse, thinking, editable data, archives)
 │
 └── dist-binary/                  # Compiled binary output
     └── clarc                     # Single standalone executable
@@ -287,39 +288,66 @@ ClArc/
 
 ## Shared Layer
 
+### `src/shared/config.ts` — Config File I/O
+
+Handles reading, writing, and validating `clarc.json`. This is the foundation for the config file system.
+
+**Config file location** (same portable logic as DATA_DIR):
+- Binary mode (`basename(process.execPath) === 'clarc'`): `clarc.json` next to the binary
+- Dev/Docker mode: `$CLARC_CONFIG_DIR/clarc.json` or `~/.config/clarc/clarc.json`
+
+```typescript
+interface ClarcConfig {
+  sourceDir?: string;   // Claude Code data directory
+  dataDir?: string;     // Synced data location
+  port?: number;        // Web server port
+  syncIntervalMs?: number; // Sync interval in ms
+}
+
+getConfigFilePath(): string           // Resolve clarc.json path
+readConfigSync(): ClarcConfig         // Synchronous read (for module-level use in paths.ts)
+readConfig(): Promise<ClarcConfig>    // Async read (for API endpoints)
+validateConfig(config): Promise<{ valid, errors, warnings }>
+writeConfig(config): Promise<void>
+```
+
+**Validation rules:**
+- `sourceDir`: Must contain a `projects/` subdirectory (Claude Code profile marker)
+- `dataDir`: Must be writable (attempts mkdir + test file write/delete)
+- `port`: Integer 1–65535
+- `syncIntervalMs`: Integer >= 10000 (10 seconds minimum)
+
 ### `src/shared/paths.ts` — Path Configuration
 
 **Critical:** All file system paths in the entire application flow through this module. Never hardcode `~/.claude` or `/home/claude-data` anywhere else.
 
+Resolution priority: **env var > config file (`clarc.json`) > default**.
+
 ```typescript
-import { homedir } from 'os';
-import { join } from 'path';
+import { readConfigSync, getConfigFilePath } from './config';
 
-// Source directory (where Claude Code writes data — read-only)
-export const SOURCE_DIR = process.env.CLARC_CLAUDE_DIR || join(homedir(), '.claude');
+const _config = readConfigSync(); // Load config once at module init
 
-// clarc's own config directory
+function parseIntOrUndefined(s: string | undefined): number | undefined {
+  if (!s) return undefined;
+  const n = parseInt(s, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+export const CONFIG_FILE = getConfigFilePath();
+
+// Resolution: env var ?? config file ?? default
+export const SOURCE_DIR = process.env.CLARC_CLAUDE_DIR ?? _config.sourceDir ?? join(homedir(), '.claude');
 export const CONFIG_DIR = process.env.CLARC_CONFIG_DIR || join(homedir(), '.config', 'clarc');
-
-// Port
-export const PORT = parseInt(process.env.CLARC_PORT || '3838', 10);
-
-// Sync interval (ms), default 5 minutes
-export const SYNC_INTERVAL_MS = parseInt(process.env.CLARC_SYNC_INTERVAL_MS || '300000', 10);
-
-// Portable data directory
-// - Compiled binary: data/ next to the executable (portable)
-// - Dev mode / bun run: CONFIG_DIR/data (unchanged behavior)
-// - Explicit override: CLARC_DATA_DIR env var
-export const DATA_DIR = process.env.CLARC_DATA_DIR || getDefaultDataDir();
+export const PORT = parseIntOrUndefined(process.env.CLARC_PORT) ?? _config.port ?? 3838;
+export const SYNC_INTERVAL_MS = parseIntOrUndefined(process.env.CLARC_SYNC_INTERVAL_MS) ?? _config.syncIntervalMs ?? 300000;
+export const DATA_DIR = process.env.CLARC_DATA_DIR ?? _config.dataDir ?? getDefaultDataDir();
 
 function getDefaultDataDir(): string {
   const execName = basename(process.execPath);
   if (execName === 'clarc') {
-    // Compiled binary — store data next to it for portability
     return join(dirname(process.execPath), 'data');
   }
-  // Dev mode — use config directory
   return join(CONFIG_DIR, 'data');
 }
 
@@ -328,11 +356,7 @@ export const PROJECTS_DIR = join(DATA_DIR, 'projects');
 export const TODOS_DIR = join(DATA_DIR, 'todos');
 export const HISTORY_FILE = join(DATA_DIR, 'history.jsonl');
 export const STATS_FILE = join(DATA_DIR, 'stats-cache.json');
-
-// Sync state file — lives inside DATA_DIR so it travels with the data
 export const SYNC_STATE_FILE = join(DATA_DIR, 'sync-state.json');
-
-// Legacy alias — some existing code references CLAUDE_DIR
 export const CLAUDE_DIR = SOURCE_DIR;
 
 // These are NOT synced — always read from source
@@ -340,6 +364,8 @@ export const PLANS_DIR = join(SOURCE_DIR, 'plans');
 export const FILE_HISTORY_DIR = join(SOURCE_DIR, 'file-history');
 export const SETTINGS_FILE = join(SOURCE_DIR, 'settings.json');
 ```
+
+**Note:** Uses `??` (nullish coalescing) instead of `||` for correct numeric resolution — avoids the `0 || default` pitfall where falsy values like `0` would incorrectly fall through to the default.
 
 **Portable data directory logic:**
 
@@ -350,8 +376,8 @@ export const SETTINGS_FILE = join(SOURCE_DIR, 'settings.json');
 3. Dev mode (bun/node runtime) → `~/.config/clarc/data/`
 
 This means:
-- **Compiled binary**: `./clarc` stores synced data in `./data/` — copy the binary + `data/` folder to a new machine to preserve all history
-- **Dev mode / Docker**: `process.execPath` is `bun`, so it falls back to `~/.config/clarc/data/` (Docker: `/home/clarc-config/data/`)
+- **Compiled binary**: `./clarc` stores synced data in `./data/` and config in `./clarc.json` — copy the binary + `data/` folder + `clarc.json` to a new machine to preserve all history and settings
+- **Dev mode / Docker**: `process.execPath` is `bun`, so it falls back to `~/.config/clarc/data/` (Docker: `/home/clarc-config/data/`) and config at `~/.config/clarc/clarc.json`
 - **Custom path**: `CLARC_DATA_DIR=/my/path clarc` overrides everything
 
 **Data flow:**
@@ -477,12 +503,15 @@ startPeriodicSync(intervalMs?: number): void
 
 // Stop the periodic timer
 stopPeriodicSync(): void
+
+// Restart with a new interval (used for hot-reload when config changes)
+restartPeriodicSync(intervalMs: number): void
 ```
 
 **Integration points:**
 - `src/server/index.ts` calls `await initSync()` at startup, then `startPeriodicSync()`
 - `src/cli/index.ts` has a `preAction` hook that calls `initSync()` before any CLI command (except `serve`, which handles its own sync)
-- `src/server/routes/system.ts` calls `runSync()` before `reindex()` on `POST /api/reindex`
+- `src/server/routes/system.ts` calls `runSync()` before `reindex()` on `POST /api/reindex`, and `restartPeriodicSync()` when sync interval is changed via `POST /api/settings/config`
 - `src/server/routes/sync.ts` exposes manual sync via `POST /api/sync`
 
 ### `src/data/scanner.ts` — Project Discovery
@@ -642,9 +671,12 @@ export default { port: PORT, fetch: app.fetch };  // Bun serve
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/sessions/bookmarks?ids=id1,id2,id3` | Bookmarked session summaries |
 | GET | `/api/sessions/:id` | Full parsed session with all messages |
 | GET | `/api/sessions/:id/messages?offset=&limit=` | Paginated messages |
 | GET | `/api/sessions/agents/:projectId/:agentId` | Sub-agent session |
+
+The bookmarks endpoint returns `{ sessions: [{ id, projectId, projectName, slug, model, messageCount, costUsd, startedAt }] }` for the given session IDs. This is used by the Dashboard to display bookmarked sessions.
 
 #### Search
 
@@ -709,8 +741,17 @@ The response includes:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/status` | Health check, index stats, sync info, directory paths |
-| GET | `/api/settings/info` | Runtime info (sourceDir, dataDir, syncIntervalMs, port, version) |
+| GET | `/api/settings/info` | Runtime info, config file contents, env override flags |
+| POST | `/api/settings/config` | Validate and save clarc.json config |
 | POST | `/api/reindex` | Sync (unless `?sync=false`) then re-scan data directory |
+
+**GET `/api/settings/info`** returns:
+- `sourceDir`, `dataDir`, `syncIntervalMs`, `port`, `version` — active runtime values
+- `configFilePath` — path to `clarc.json`
+- `configFile` — current JSON contents of `clarc.json` (the persisted overrides)
+- `envOverrides` — `{ sourceDir, dataDir, port, syncIntervalMs }` booleans indicating which fields are locked by environment variables
+
+**POST `/api/settings/config`** accepts a partial config object. Sending `null` for a field removes it (reverts to default). Returns `{ saved, restartRequired, config, errors, warnings }`. When `syncIntervalMs` is changed, it hot-reloads the sync timer via `restartPeriodicSync()`. Returns `restartRequired: true` when sourceDir, dataDir, or port change.
 
 ### Adding a New API Route
 
@@ -750,7 +791,7 @@ The response includes:
 | `/search` | `Search` | Glass search bar, staggered result cards |
 | `/tasks` | `Tasks` | Colored column headers, pulsing blocked dots |
 | `/help` | `Help` | In-app help and usage guide |
-| `/settings` | `Settings` | Theme, collapse threshold, thinking default, data paths |
+| `/settings` | `Settings` | Theme, collapse, thinking, editable data config, archived projects |
 
 ### Hooks
 
@@ -778,13 +819,19 @@ Manages user preferences stored in localStorage under `clarc-settings`:
 
 ```typescript
 const [settings, updateSettings] = useSettings();
-// settings: { theme: 'system'|'light'|'dark', collapseThreshold: number, defaultShowThinking: boolean }
+// settings: { theme, collapseThreshold, defaultShowThinking, archivedProjects, bookmarkedSessions }
 // updateSettings({ theme: 'dark' })  // partial updates, persisted immediately
 ```
 
 - **Theme**: Applies `data-theme` attribute on `<html>` element. `'system'` removes the attribute (falls back to media query), `'light'`/`'dark'` force the mode.
 - **Collapse threshold**: Passed to `CollapsibleContent` via `ConversationTurn` → `MessageRenderer`. Set to `0` to disable.
 - **Default show thinking**: Read by `SessionDetail` and `AgentDetail` for initial `showThinking` state.
+- **archivedProjects**: `string[]` of project IDs. Used by `Sidebar` to filter projects and by `Settings` to show the Archived Projects management section.
+- **bookmarkedSessions**: `string[]` of session IDs. Used by `Dashboard` to fetch and display bookmarked sessions, and by `SessionDetail`/`AgentDetail` to show the bookmark toggle star.
+
+**Helper functions** (exported separately):
+- `isProjectArchived(settings, projectId)` / `toggleProjectArchived(settings, update, projectId)` — archive state management
+- `isSessionBookmarked(settings, sessionId)` / `toggleSessionBookmark(settings, update, sessionId)` — bookmark state management
 
 #### `useSessionNavigation(projectId, currentSessionId)`
 
@@ -813,7 +860,7 @@ Used by `SessionDetail` to allow sequential session browsing.
 | `ChartCard` | `ChartCard.tsx` | Recharts wrapper card with title and consistent styling |
 | `EmptyState` | `EmptyState.tsx` | Empty state display with icon and message |
 | `Badge` | `Badge.tsx` | Standardized pill badge for status, model, cost labels |
-| `Icons` | `Icons.tsx` | ~25 inline SVG icon components (no external library dependency) |
+| `Icons` | `Icons.tsx` | ~35 inline SVG icon components (includes ArchiveIcon, StarIcon, StarFilledIcon, FolderIcon) |
 | `Tooltip` | `Tooltip.tsx` | Pure CSS tooltip (no JavaScript positioning) |
 | `ContextPanelProvider` | `ContextPanelProvider.tsx` | React context providing side panel open/close state |
 | `ContextPanel` | `ContextPanel.tsx` | 480px slide-in panel for agents, tool details, previews |
@@ -837,9 +884,10 @@ The app shell. Renders:
 ##### `Sidebar.tsx`
 
 - **Header**: "clarc" logo with `text-gradient` animation + collapse button
-- **Filter**: Text input to filter projects
+- **Filter**: Text input to filter projects (shows all projects including archived when filtering)
 - **Navigation**: Dashboard, Analytics, Search, Tasks links with icons and active accent bar
-- **Project list**: Sorted by activity, shows name, session count, message count, time ago; hover reveals chevron
+- **Project list**: Sorted by activity, shows name, session count, message count, time ago; hover reveals chevron and archive button
+- **Archive toggle**: When archived projects exist, shows "N archived" toggle in project header. Archived projects displayed at 50% opacity.
 - **Bottom links**: Settings (gear icon) and Help & Guide (help circle icon) pinned at the bottom
 
 ##### `MessageRenderer.tsx`
@@ -891,14 +939,14 @@ Keyboard shortcut help overlay:
 
 All pages now include skeleton loading states (using `Skeleton` components) while data is being fetched.
 
-- **Dashboard**: Gradient hero section, `StatCard` grid, `ChartCard` with Recharts `AreaChart`, project listing
+- **Dashboard**: Gradient hero section, `StatCard` grid, bookmarked sessions section, `ChartCard` with Recharts `AreaChart`, project listing
 - **ProjectDetail**: `SessionTimeline` with date grouping, clickable agent badges that open in `ContextPanel`
 - **SessionDetail**: Glass header with session metadata, `ConversationTurn` grouping, `ScrollProgress` bar, `ScrollNav` floating pill, `[` / `]` session navigation
 - **Analytics**: 6 Recharts visualizations (cost bar chart, cost area chart, token area chart, hourly bar chart), activity heatmap grid, circular cache hit indicator
 - **Search**: Glass search bar, staggered result card animations
 - **Tasks**: Colored column headers per status, pulsing dot for blocked tasks
 - **MarkdownPreview**: Glass toolbar, toggle switches for thinking/tools inclusion
-- **Settings**: Theme toggle (segmented control), collapse threshold slider, thinking default toggle, server info display
+- **Settings**: Theme toggle (segmented control), collapse threshold slider, thinking default toggle, editable data config (clarc.json), archived projects management
 - **Help**: Table of contents, feature sections, keyboard shortcuts, cost table
 
 ### Adding a New Page
@@ -1263,7 +1311,7 @@ clarc status       # CLI: show stats (syncs first)
 clarc search "bug" # CLI: search sessions (syncs first)
 ```
 
-The binary reads `~/.claude` as the source directory and syncs to `~/.config/clarc/data/` automatically. No Docker needed.
+The binary reads `~/.claude` as the source directory and syncs to `./data/` next to the binary. Settings can be configured via `./clarc.json` next to the binary or via the Settings page in the web UI. No Docker needed.
 
 ---
 

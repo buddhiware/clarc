@@ -1,6 +1,6 @@
 # clarc User Guide
 
-**clarc** (Claude Archive) is a local tool that reads your Claude Code session history from `~/.claude/` and presents it as a browsable web interface with search, analytics, markdown export, sub-agent visualization, and a context panel for deep-diving into conversations.
+**clarc** is a local Claude Code history browser — inspired by the idea of a Claude archive. It reads your session history from `~/.claude/` and presents it as a browsable web interface with search, analytics, markdown export, sub-agent visualization, bookmarks, project archiving, and a context panel for deep-diving into conversations.
 
 ---
 
@@ -92,6 +92,7 @@ clarc syncs your `~/.claude/` directory to a local copy at `~/.config/clarc/data
 The home page shows an overview of your entire Claude Code history:
 
 - **Gradient Hero Stats** -- Animated stat cards displaying total projects, sessions, messages, and estimated cost. Each card uses a color gradient background and animates in on page load.
+- **Bookmarked Sessions** -- If you have bookmarked any sessions (via the star icon in session/agent views), they appear in a dedicated section between the stats and the activity chart. Each card shows the session summary, project name, model, message count, cost, and time. Click to jump to the session.
 - **Daily Activity Chart** -- An interactive recharts AreaChart showing messages per day. Hover over any point to see the exact date and count in a tooltip.
 - **Model Usage Table** -- Token counts and cost breakdown per model (Opus, Sonnet, Haiku). Rows highlight on hover for easy reading.
 - **Project Cards** -- Quick links to each project with session and message counts. Cards display a subtle glow effect on hover.
@@ -105,12 +106,14 @@ The left sidebar is always visible and shows:
 - **clarc Logo** -- The word "clarc" rendered with a text-gradient effect at the top of the sidebar
 - **Navigation Links** -- Dashboard, Analytics, Search, Tasks -- each with an icon alongside the label
 - **Bottom Links** -- Settings and Help & Guide pinned at the bottom of the sidebar
-- **Filter** -- Type to filter projects by name
+- **Filter** -- Type to filter projects by name (shows all projects including archived ones when filtering)
 - **Project List** -- All projects sorted by last activity, showing:
   - Project name
   - Session count and message count
   - Relative time since last activity (e.g., "2h ago")
   - A hover chevron appears on the right side of each project row on mouseover
+  - A hover archive button appears to archive/unarchive the project
+- **Archive Toggle** -- When archived projects exist, an "N archived" toggle appears in the project list header. Click to show/hide archived projects (shown at reduced opacity).
 
 Click a project to open its detail view.
 
@@ -142,6 +145,7 @@ The session header uses a frosted glass blur effect and remains fixed at the top
   - Git branch (if available)
   - Duration
   - Date
+- **Bookmark** -- Star icon to bookmark/unbookmark the session. Bookmarked sessions appear on the Dashboard.
 - **Toggle** -- "Show/Hide Thinking" button
 - **Export** -- "Export .md" link
 - **Agent Chips** -- If the session spawned sub-agents, they appear as clickable buttons in the header. Clicking an agent chip opens that agent's conversation in the Context Panel.
@@ -394,17 +398,28 @@ The Settings page (`/settings`) lets you configure your clarc experience. Access
 
 #### Data
 
-Read-only display of runtime information:
-- **Source directory** -- Where Claude Code stores session data (e.g. `~/.claude`)
-- **Data directory** -- Where clarc stores its synced copy
-- **Sync interval** -- How often clarc checks for new data
-- **Server port** -- The port clarc is running on
+Editable configuration saved to `clarc.json`:
+
+- **Config file** -- Read-only display of the path to `clarc.json` on the server
+- **Source directory** -- Where Claude Code stores session data. Validates that the path contains a `projects/` subdirectory.
+- **Data directory** -- Where clarc stores its synced copy. Validates that the path is writable.
+- **Server port** -- The port clarc listens on (1–65535). Requires restart after change.
+- **Sync interval** -- How often clarc checks for new data, in seconds (minimum 10s). Takes effect immediately without restart.
+
+When a field is overridden by an environment variable, it shows an amber **env** badge and becomes read-only. A **Save** button appears when you have unsaved changes. After saving:
+- Changes to source directory, data directory, or port show an amber "restart required" banner
+- Sync interval changes show a green "saved and applied" banner
+- Validation errors show red inline messages per field
+
+#### Archived Projects
+
+Lists all projects you have archived from the sidebar, with an **Unarchive** button for each. If no projects are archived, shows a help message explaining how to archive from the sidebar.
 
 #### About
 
-Version info and a link to the Help page.
+Version info, description ("Inspired by the idea of a Claude archive"), and a link to the Help page.
 
-**Note:** All settings are stored in your browser's localStorage and persist across browser sessions.
+**Note:** Display settings are stored in your browser's localStorage. Data settings are stored in `clarc.json` on the server.
 
 ---
 
@@ -450,7 +465,7 @@ Shows a summary of your Claude Code history.
 
 ```
 $ clarc status
-clarc -- Claude Archive Status
+clarc — Status
 ----------------------------------------
 Projects:       3
 Sessions:       5
@@ -544,7 +559,31 @@ Gradient backgrounds and glass effects (frosted blur on headers, panels, and sea
 
 ## Configuration
 
+clarc supports three configuration methods, with this priority order: **environment variables > clarc.json > defaults**.
+
+### Config File (`clarc.json`)
+
+The simplest way to configure clarc. Edit via the Settings page in the web UI, or create the file manually.
+
+**Location:**
+- **Compiled binary** (`./clarc`): `clarc.json` next to the binary
+- **Dev mode** (`bun run` / Docker): `~/.config/clarc/clarc.json`
+
+**Supported fields:**
+```json
+{
+  "sourceDir": "/path/to/.claude",
+  "dataDir": "/path/to/data",
+  "port": 3838,
+  "syncIntervalMs": 300000
+}
+```
+
+All fields are optional — omit a field to use the default. The Settings page validates values before saving (e.g., sourceDir must be a Claude Code profile directory, dataDir must be writable, port must be 1–65535, syncIntervalMs must be >= 10000).
+
 ### Environment Variables
+
+Environment variables take priority over `clarc.json` values. When set, the corresponding field in Settings shows an amber **env** badge and is read-only.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -552,6 +591,7 @@ Gradient backgrounds and glass effects (frosted blur on headers, panels, and sea
 | `CLARC_CONFIG_DIR` | `~/.config/clarc` | Path to clarc's own config directory |
 | `CLARC_DATA_DIR` | *(auto)* | Override synced data location (see below) |
 | `CLARC_PORT` | `3838` | Web server port |
+| `CLARC_SYNC_INTERVAL_MS` | `300000` | Sync interval in milliseconds |
 
 ### Portable Data Directory
 

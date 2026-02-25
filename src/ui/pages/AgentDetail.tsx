@@ -6,8 +6,8 @@ import ScrollProgress from '../components/ScrollProgress';
 import ScrollNav from '../components/ScrollNav';
 import Badge from '../components/Badge';
 import { Skeleton, SkeletonGroup } from '../components/Skeleton';
-import { ChevronRightIcon, ZapIcon } from '../components/Icons';
-import { useSettings } from '../hooks/useSettings';
+import { ChevronRightIcon, ZapIcon, StarIcon, StarFilledIcon } from '../components/Icons';
+import { useSettings, isSessionBookmarked, toggleSessionBookmark } from '../hooks/useSettings';
 
 interface AgentData {
   id: string;
@@ -48,9 +48,10 @@ export default function AgentDetail() {
   const { data: agent, loading, error } = useApi<AgentData>(
     `/sessions/agents/${encodeURIComponent(projectId || '')}/${encodeURIComponent(agentId || '')}`
   );
-  const [settings] = useSettings();
+  const [settings, updateSettings] = useSettings();
   const [showThinking, setShowThinking] = useState(settings.defaultShowThinking);
   const navigate = useNavigate();
+  const bookmarked = agent ? isSessionBookmarked(settings, agent.parentSessionId) : false;
 
   if (loading) return <AgentSkeleton />;
   if (error) return <div className="p-6 text-sm" style={{ color: 'var(--color-accent-rose)' }}>Error: {error}</div>;
@@ -116,6 +117,17 @@ export default function AgentDetail() {
           </div>
 
           <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={() => toggleSessionBookmark(settings, updateSettings, agent.parentSessionId)}
+              className="btn-ghost text-xs px-2 py-1.5 rounded-lg"
+              style={{
+                border: '1px solid var(--color-border)',
+                color: bookmarked ? 'var(--color-accent-amber)' : undefined,
+              }}
+              title={bookmarked ? 'Remove bookmark' : 'Bookmark parent session'}
+            >
+              {bookmarked ? <StarFilledIcon size={14} /> : <StarIcon size={14} />}
+            </button>
             <button
               onClick={() => setShowThinking(!showThinking)}
               className="btn-ghost text-xs px-3 py-1.5 rounded-lg"
