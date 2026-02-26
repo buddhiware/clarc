@@ -39,6 +39,7 @@ credentials.json
 
 # Docker
 .docker/
+docker-compose.override.yml
 
 # Claude Code local settings
 .claude/

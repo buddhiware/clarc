@@ -162,6 +162,17 @@ The `docker-compose.yml` defines three services:
 
 The sync layer copies files from `/home/claude-data` (the read-only mount) into `/home/clarc-config/data/` (the read-write config volume). All scanner and parser reads go through the config volume.
 
+**Personal overrides:** Create a `docker-compose.override.yml` (gitignored) to add personal volume mounts or env vars without modifying the committed `docker-compose.yml`. Docker Compose automatically merges both files. Example for multi-source on WSL:
+
+```yaml
+services:
+  clarc:
+    volumes:
+      - /mnt/c/Users/yourname/.claude:/home/win-claude-data:ro
+    environment:
+      - CLARC_CLAUDE_DIR=/home/claude-data:/home/win-claude-data
+```
+
 #### `build` (one-shot binary compilation)
 
 - Activated with `make build` or `docker compose run --rm build`
@@ -206,6 +217,7 @@ ClArc/
 ├── Dockerfile                    # Container image definition (Alpine + Bun)
 ├── Dockerfile.tauri              # Tauri build container (Ubuntu 24.04 + Bun + Rust)
 ├── docker-compose.yml            # Service orchestration (clarc, build, tauri-build)
+├── docker-compose.override.yml   # (gitignored) Personal volume/env overrides
 ├── Makefile                      # Convenience commands
 ├── package.json                  # Dependencies and scripts
 ├── tsconfig.json                 # TypeScript configuration
