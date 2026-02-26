@@ -94,13 +94,14 @@ export default function Help() {
       <Section id="welcome" title="Welcome">
         <P>
           <strong style={{ color: 'var(--color-text)' }}>clarc</strong> (inspired by the idea of a Claude archive) is a local tool that reads your Claude Code
-          session history from <code>~/.claude/</code> and presents it as a browsable web interface with search,
+          session history from your <code>~/.claude/</code> directories and presents it as a browsable web interface with search,
           analytics, markdown export, and sub-agent visualization.
         </P>
         <P>
           clarc <strong style={{ color: 'var(--color-text)' }}>never modifies</strong> your Claude Code data. All access is read-only.
-          A transparent sync layer copies data to a local working directory (<code>~/.config/clarc/data/</code>)
-          so the original files are never touched at runtime.
+          A transparent sync layer copies data from all configured source directories to a local working directory
+          (<code>~/.config/clarc/data/</code>) so the original files are never touched at runtime.
+          Multiple sources (e.g., WSL + Windows) are merged into a unified view.
         </P>
       </Section>
 
@@ -118,7 +119,7 @@ export default function Help() {
 
       <Section id="projects" title="Projects & Timeline">
         <P>
-          clarc discovers projects by scanning directories in <code>~/.claude/projects/</code>. Each directory
+          clarc discovers projects by scanning the synced <code>projects/</code> directory. Each subdirectory
           represents a project, named after its encoded filesystem path.
         </P>
         <P>
@@ -305,8 +306,8 @@ export default function Help() {
             visible when you open a session. You can always toggle per-session using the header button.
           </li>
           <li>
-            <strong style={{ color: 'var(--color-text)' }}>Data info</strong> — View your source directory, data directory,
-            sync interval, and server port.
+            <strong style={{ color: 'var(--color-text)' }}>Data info</strong> — View and manage your source directories (supports multiple),
+            data directory, sync interval, and server port. On WSL, use "Auto-detect" to find Windows-side Claude directories.
           </li>
         </ul>
         <P>
@@ -337,11 +338,12 @@ export default function Help() {
         <ul className="list-disc pl-5 space-y-1.5" style={{ color: 'var(--color-text-muted)' }}>
           <li>
             <strong style={{ color: 'var(--color-text)' }}>Read-only access</strong> — clarc never creates, modifies, or deletes files
-            in <code>~/.claude/</code>. In Docker, the directory is mounted with the <code>:ro</code> flag.
+            in your source directories. In Docker, they are mounted with the <code>:ro</code> flag.
           </li>
           <li>
             <strong style={{ color: 'var(--color-text)' }}>Data sync</strong> — At startup and every 5 minutes, clarc copies session files
-            from <code>~/.claude/</code> to <code>~/.config/clarc/data/</code>. This is add-only (files are never deleted from the local copy,
+            from all configured source directories to <code>~/.config/clarc/data/</code>. Multiple sources are flat-merged
+            into a unified view. This is add-only (files are never deleted from the local copy,
             preserving history even if the source prunes old sessions). These paths are visible on
             the <a href="/settings" style={{ color: 'var(--color-primary)' }}>Settings</a> page.
           </li>
