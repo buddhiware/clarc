@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useSettings, isProjectArchived, toggleProjectArchived } from '../hooks/useSettings';
-import { GridIcon, BarChartIcon, SearchIcon, CheckSquareIcon, HelpCircleIcon, SettingsIcon, FolderIcon, ChevronRightIcon, SidebarIcon, ArchiveIcon } from './Icons';
+import { GridIcon, BarChartIcon, SearchIcon, CheckSquareIcon, HelpCircleIcon, SettingsIcon, FolderIcon, ChevronRightIcon, SidebarIcon, ArchiveIcon, RefreshIcon } from './Icons';
 
 interface ProjectSummary {
   id: string;
@@ -20,11 +20,25 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar({ onToggle }: { onToggle: () => void }) {
-  const { data: projects } = useApi<ProjectSummary[]>('/projects');
+  const { data: projects, refetch: refetchProjects } = useApi<ProjectSummary[]>('/projects');
   const [filter, setFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [settings, updateSettings] = useSettings();
   const location = useLocation();
+
+  const handleSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await fetch('/api/sync', { method: 'POST' });
+      refetchProjects();
+    } catch {
+      // sync failed silently — user can retry
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const filtered = (projects?.filter(p => {
     const matchesFilter = p.name.toLowerCase().includes(filter.toLowerCase());
@@ -47,13 +61,26 @@ export default function Sidebar({ onToggle }: { onToggle: () => void }) {
           <Link to="/" className="text-lg font-bold text-gradient">
             clarc
           </Link>
-          <button
-            onClick={onToggle}
-            className="btn-ghost p-1.5 rounded-lg"
-            title="Hide sidebar"
-          >
-            <SidebarIcon size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="btn-ghost p-1.5 rounded-lg"
+              title={isSyncing ? 'Syncing…' : 'Sync Claude data'}
+            >
+              <RefreshIcon
+                size={16}
+                style={isSyncing ? { animation: 'spin 1s linear infinite' } : undefined}
+              />
+            </button>
+            <button
+              onClick={onToggle}
+              className="btn-ghost p-1.5 rounded-lg"
+              title="Hide sidebar"
+            >
+              <SidebarIcon size={16} />
+            </button>
+          </div>
         </div>
         <input
           type="text"

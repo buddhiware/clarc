@@ -4,9 +4,10 @@
 interface IconProps {
   size?: number;
   className?: string;
+  style?: React.CSSProperties;
 }
 
-function Icon({ size = 16, className, children }: IconProps & { children: React.ReactNode }) {
+function Icon({ size = 16, className, style, children }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       width={size}
@@ -18,6 +19,7 @@ function Icon({ size = 16, className, children }: IconProps & { children: React.
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
+      style={style}
     >
       {children}
     </svg>

@@ -781,8 +781,8 @@ CLARC_CLAUDE_DIR=/other/path/.claude clarc
 ### How do I refresh the data?
 
 Data auto-syncs from `~/.claude/` every 5 minutes and at startup. To refresh manually:
+- **Web UI**: Click the **sync button** (refresh icon) in the sidebar header to trigger a sync and refresh project data
 - **API**: Send `POST /api/sync` to sync latest files, or `POST /api/reindex` to sync and rebuild the full index
-- **Web UI**: Data loads fresh on each page navigation from the in-memory index
 - **Restart**: Restarting clarc triggers a fresh sync and clears all caches
 
 ### Can I run clarc on a remote server?

@@ -919,7 +919,7 @@ The app shell. Renders:
 
 ##### `Sidebar.tsx`
 
-- **Header**: "clarc" logo with `text-gradient` animation + collapse button
+- **Header**: "clarc" logo with `text-gradient` animation + sync button (refresh icon, spins while syncing, calls `POST /api/sync` and refetches projects) + collapse button
 - **Filter**: Text input to filter projects (shows all projects including archived when filtering)
 - **Navigation**: Dashboard, Analytics, Search, Tasks links with icons and active accent bar
 - **Project list**: Sorted by activity, shows name, session count, message count, time ago; hover reveals chevron and archive button
