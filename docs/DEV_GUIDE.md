@@ -568,7 +568,9 @@ restartPeriodicSync(intervalMs: number): void
 #### How it works
 
 1. Lists directories in `${PROJECTS_DIR}` (which is `DATA_DIR/projects/`, populated by sync)
-2. For each project directory:
+2. **Normalizes project IDs** to unify WSL and Windows path encodings. Claude Code encodes the working directory as the project folder name: WSL encodes `/mnt/e/foo` as `-mnt-e-foo`, while Windows encodes `E:\foo` as `E--foo`. The `normalizeProjectId()` function converts WSL form to drive-letter form so both resolve to `E--foo`.
+3. **Groups directories** by normalized ID. When multiple directories map to the same canonical ID (e.g., sessions from WSL terminal and Windows Claude Desktop for the same project), `scanMergedProject()` merges their sessions, agents, and tasks into a single `Project`, deduplicating sessions by UUID.
+4. For each project directory:
    - Finds `*.jsonl` files (sessions)
    - Reads first 20 lines of each for metadata (slug, model, git branch, summary)
    - Scans **all** assistant messages for token usage (input, output, cache read, cache create)
@@ -576,7 +578,7 @@ restartPeriodicSync(intervalMs: number): void
    - Discovers sub-agents in `[sessionId]/subagents/agent-*.jsonl`
    - **Detects orphan session directories** — UUID-named directories with no matching `.jsonl` file that contain `tool-results/*.txt` or `subagents/*.jsonl`. These get synthetic `SessionRef` entries with summary previews.
    - Loads matching task files from `${TODOS_DIR}`
-3. Sorts projects by last activity
+5. Sorts projects by last activity
 
 #### Token Extraction (v0.2 change)
 

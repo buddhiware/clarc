@@ -38,18 +38,26 @@ export async function reindex(): Promise<ClarcIndex> {
 
 function decodeProjectPath(encoded: string): string {
   // Encoding replaces / with - and special chars
-  // First char is always - (for the leading /)
-  // Pattern: -mnt-e-jb-desktop--PersonalDocs... → /mnt/e/jb_desktop_/PersonalDocs...
-  // We can't perfectly reverse-engineer _ vs - etc., so return the encoded form
-  // But we can try: dashes become / except doubled dashes which become a literal dash in the segment
-  // Actually the encoding is: path.replace(/\//g, '-') but also replaces some chars
-  // For display, let's do our best: split on single dashes, join with /
-  // Double-dashes in original path become -- in encoded form
+  // We can't perfectly reverse the encoding, so return the encoded form
+  return encoded;
+}
 
-  // Better approach: the encoded path replaces / with -
-  // But segments containing - get those preserved as -
-  // We can't perfectly reverse this, so just return the encoded as-is for the path
-  // and extract a nice name from the last segment
+/**
+ * Normalize project directory names to unify WSL and Windows path encodings.
+ *
+ * Claude Code encodes the working directory as the project folder name:
+ *   WSL:     /mnt/e/foo  →  -mnt-e-foo
+ *   Windows: E:\foo      →  E--foo
+ *
+ * Both refer to the same physical location. This function normalizes the
+ * WSL form to the Windows drive-letter form so they merge as one project.
+ */
+function normalizeProjectId(encoded: string): string {
+  // Match WSL mount pattern: -mnt-X-rest  where X is a single drive letter
+  const wslMatch = encoded.match(/^-mnt-([a-zA-Z])-(.+)$/);
+  if (wslMatch) {
+    return `${wslMatch[1].toUpperCase()}--${wslMatch[2]}`;
+  }
   return encoded;
 }
 
@@ -70,22 +78,87 @@ async function scanProjects(): Promise<Project[]> {
     return [];
   }
 
+  // Group directories by normalized ID to unify WSL/Windows encodings
+  // e.g., -mnt-e-foo and E--foo both normalize to E--foo
+  const groups = new Map<string, string[]>();
+
   for (const dirName of projectDirs) {
     try {
       const projectPath = join(PROJECTS_DIR, dirName);
       const dirStat = await stat(projectPath);
       if (!dirStat.isDirectory()) continue;
 
-      const project = await scanProject(dirName, projectPath);
-      projects.push(project);
+      const canonicalId = normalizeProjectId(dirName);
+      if (!groups.has(canonicalId)) groups.set(canonicalId, []);
+      groups.get(canonicalId)!.push(dirName);
     } catch (err) {
-      console.warn(`Warning: failed to scan project ${dirName}:`, err);
+      console.warn(`Warning: failed to stat project ${dirName}:`, err);
+    }
+  }
+
+  for (const [canonicalId, dirNames] of groups) {
+    try {
+      if (dirNames.length === 1) {
+        // Single directory — use normalized ID but scan the actual dir
+        const project = await scanProject(canonicalId, join(PROJECTS_DIR, dirNames[0]));
+        projects.push(project);
+      } else {
+        // Multiple directories map to the same path (e.g., WSL + Windows)
+        // Merge all sessions into one unified project
+        const project = await scanMergedProject(canonicalId, dirNames);
+        projects.push(project);
+      }
+    } catch (err) {
+      console.warn(`Warning: failed to scan project ${canonicalId}:`, err);
     }
   }
 
   // Sort by last active
   projects.sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
   return projects;
+}
+
+/**
+ * Merge multiple physical project directories into a single Project.
+ * This happens when the same path is encoded differently by WSL vs Windows Claude.
+ */
+async function scanMergedProject(canonicalId: string, dirNames: string[]): Promise<Project> {
+  const allSessions: SessionRef[] = [];
+  const allAgents: AgentRef[] = [];
+  const allTasks: TaskList[] = [];
+  let lastActiveAt = new Date(0);
+  let messageCount = 0;
+
+  for (const dirName of dirNames) {
+    const project = await scanProject(canonicalId, join(PROJECTS_DIR, dirName));
+    allSessions.push(...project.sessions);
+    allAgents.push(...project.agents);
+    allTasks.push(...project.tasks);
+    if (project.lastActiveAt > lastActiveAt) lastActiveAt = project.lastActiveAt;
+    messageCount += project.messageCount;
+  }
+
+  // Deduplicate sessions by UUID (same session shouldn't appear twice)
+  const seen = new Set<string>();
+  const dedupedSessions = allSessions.filter(s => {
+    if (seen.has(s.id)) return false;
+    seen.add(s.id);
+    return true;
+  });
+
+  // Sort merged sessions by modified date (newest first)
+  dedupedSessions.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
+
+  return {
+    id: canonicalId,
+    path: decodeProjectPath(canonicalId),
+    name: extractProjectName(canonicalId),
+    sessions: dedupedSessions,
+    agents: allAgents,
+    tasks: allTasks,
+    lastActiveAt,
+    messageCount,
+  };
 }
 
 async function scanProject(id: string, projectPath: string): Promise<Project> {

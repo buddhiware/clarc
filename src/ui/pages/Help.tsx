@@ -343,8 +343,11 @@ export default function Help() {
           <li>
             <strong style={{ color: 'var(--color-text)' }}>Data sync</strong> — At startup and every 5 minutes, clarc copies session files
             from all configured source directories to <code>~/.config/clarc/data/</code>. Multiple sources are flat-merged
-            into a unified view. This is add-only (files are never deleted from the local copy,
-            preserving history even if the source prunes old sessions). These paths are visible on
+            into a unified view. WSL and Windows path encodings are automatically normalized so that
+            the same project opened from both environments (e.g., <code>/mnt/e/myproject</code> and{' '}
+            <code>E:\myproject</code>) appears as a single project with merged sessions. This is add-only
+            (files are never deleted from the local copy, preserving history even if the source prunes
+            old sessions). These paths are visible on
             the <a href="/settings" style={{ color: 'var(--color-primary)' }}>Settings</a> page.
           </li>
           <li>

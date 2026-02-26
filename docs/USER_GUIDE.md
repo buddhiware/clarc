@@ -460,6 +460,7 @@ clarc maintains a local copy of your Claude Code data to ensure safe, read-only 
 - The sync runs again automatically **every 5 minutes**
 - The sync is **add-only** -- it copies new and updated files but never deletes files from the local copy, even if they are removed from the source
 - **Multiple sources** are flat-merged: project directories and sessions from all sources appear in a unified list. `history.jsonl` files are merged with deduplication. `stats-cache.json` uses last-wins.
+- **WSL/Windows path normalization**: When the same project is opened from both WSL (e.g., `/mnt/e/myproject`) and Windows Claude Desktop (e.g., `E:\myproject`), Claude Code encodes these as different directory names. clarc automatically normalizes these so sessions from both environments merge into a single project.
 - The scanner and parser read exclusively from the merged local copy, never from source directories directly
 
 ### Manual Sync
@@ -787,6 +788,8 @@ On WSL, the Settings page can auto-detect Windows-side `.claude` directories. Yo
   "sourceDirs": ["~/.claude", "/mnt/c/Users/yourname/.claude"]
 }
 ```
+
+clarc automatically normalizes WSL and Windows path encodings, so projects opened from `/mnt/e/myproject` (WSL) and `E:\myproject` (Windows) appear as a single unified project with all sessions merged.
 
 ### How do I refresh the data?
 
