@@ -244,17 +244,18 @@ export interface SearchResult {
 // ============================================================
 
 export interface SyncState {
-  version: 1;
+  version: 2;
   lastSyncAt: string;
   lastSyncDurationMs: number;
   syncCount: number;
-  sourceDir: string;
+  sourceDirs: string[];
   fileInventory: Record<string, SyncedFile>;
   errors: SyncError[];
 }
 
 export interface SyncedFile {
   relativePath: string;
+  sourceIndex: number;
   sourceMtimeMs: number;
   sourceSizeBytes: number;
   syncedAt: string;
@@ -270,7 +271,8 @@ export interface SyncStatus {
   lastSyncAt: string | null;
   lastSyncDurationMs: number;
   syncCount: number;
-  sourceDir: string;
+  sourceDir: string;       // Compat: first source dir
+  sourceDirs: string[];
   totalFiles: number;
   totalSizeBytes: number;
   errors: SyncError[];

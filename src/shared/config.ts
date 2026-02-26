@@ -4,7 +4,8 @@ import { readFileSync, existsSync } from 'fs';
 import { readFile, writeFile, mkdir, unlink, readdir } from 'fs/promises';
 
 export interface ClarcConfig {
-  sourceDir?: string;
+  sourceDir?: string;       // Single source (backward compat)
+  sourceDirs?: string[];    // Multiple source directories
   dataDir?: string;
   port?: number;
   syncIntervalMs?: number;
@@ -36,6 +37,10 @@ export function getConfigFilePath(): string {
 function pickKnownFields(parsed: any): ClarcConfig {
   const config: ClarcConfig = {};
   if (typeof parsed.sourceDir === 'string') config.sourceDir = parsed.sourceDir;
+  if (Array.isArray(parsed.sourceDirs)) {
+    const dirs = parsed.sourceDirs.filter((s: any) => typeof s === 'string' && s.trim());
+    if (dirs.length > 0) config.sourceDirs = dirs;
+  }
   if (typeof parsed.dataDir === 'string') config.dataDir = parsed.dataDir;
   if (typeof parsed.port === 'number') config.port = parsed.port;
   if (typeof parsed.syncIntervalMs === 'number') config.syncIntervalMs = parsed.syncIntervalMs;
@@ -71,8 +76,25 @@ export async function validateConfig(config: ClarcConfig): Promise<ConfigValidat
   const errors: Record<string, string> = {};
   const warnings: Record<string, string> = {};
 
-  // sourceDir: must contain a projects/ subdirectory (Claude Code profile marker)
-  if (config.sourceDir !== undefined) {
+  // sourceDirs: validate each path has a projects/ subdirectory
+  if (config.sourceDirs !== undefined && config.sourceDirs.length > 0) {
+    for (let i = 0; i < config.sourceDirs.length; i++) {
+      const dir = config.sourceDirs[i];
+      const key = `sourceDirs[${i}]`;
+      try {
+        const projectsPath = join(dir, 'projects');
+        const entries = await readdir(projectsPath);
+        if (entries.length === 0) {
+          warnings[key] = 'projects/ directory exists but is empty — no session data found yet';
+        }
+      } catch {
+        errors[key] = 'Not a valid Claude Code profile directory (missing projects/ subdirectory)';
+      }
+    }
+  }
+
+  // sourceDir (legacy): same validation for backward compat
+  if (config.sourceDir !== undefined && !config.sourceDirs) {
     try {
       const projectsPath = join(config.sourceDir, 'projects');
       const entries = await readdir(projectsPath);

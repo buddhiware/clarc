@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useSettings, ClarcSettings, toggleProjectArchived } from '../hooks/useSettings';
 import { useApi } from '../hooks/useApi';
-import { SunIcon, MoonIcon, MonitorIcon, ArchiveIcon, FolderIcon } from '../components/Icons';
+import { SunIcon, MoonIcon, MonitorIcon, ArchiveIcon, FolderIcon, PlusIcon, XIcon } from '../components/Icons';
 
 interface RuntimeInfo {
   sourceDir: string;
+  sourceDirs: string[];
   dataDir: string;
   syncIntervalMs: number;
   port: number;
@@ -12,6 +13,7 @@ interface RuntimeInfo {
   configFilePath: string;
   configFile: {
     sourceDir?: string;
+    sourceDirs?: string[];
     dataDir?: string;
     port?: number;
     syncIntervalMs?: number;
@@ -22,6 +24,12 @@ interface RuntimeInfo {
     port: boolean;
     syncIntervalMs: boolean;
   };
+}
+
+interface DetectSourcesResult {
+  detected: string[];
+  suggestions: string[];
+  isWSL: boolean;
 }
 
 interface ProjectSummary {
@@ -102,7 +110,7 @@ export default function Settings() {
   );
 
   // Editable config state
-  const [editSourceDir, setEditSourceDir] = useState('');
+  const [editSourceDirs, setEditSourceDirs] = useState<string[]>(['']);
   const [editDataDir, setEditDataDir] = useState('');
   const [editPort, setEditPort] = useState('');
   const [editSyncSec, setEditSyncSec] = useState('');
@@ -113,31 +121,74 @@ export default function Settings() {
     errors?: Record<string, string>;
     warnings?: Record<string, string>;
   } | null>(null);
+  const [detectedSources, setDetectedSources] = useState<DetectSourcesResult | null>(null);
+  const [detecting, setDetecting] = useState(false);
 
   // Initialize edit fields from server config file contents
   useEffect(() => {
     if (info) {
-      setEditSourceDir(info.configFile.sourceDir || '');
+      const dirs = info.configFile.sourceDirs
+        || (info.configFile.sourceDir ? [info.configFile.sourceDir] : []);
+      setEditSourceDirs(dirs.length > 0 ? dirs : ['']);
       setEditDataDir(info.configFile.dataDir || '');
       setEditPort(info.configFile.port?.toString() || '');
       setEditSyncSec(info.configFile.syncIntervalMs ? String(info.configFile.syncIntervalMs / 1000) : '');
     }
   }, [info]);
 
+  // Compute initial source dirs for change detection
+  const initialSourceDirs = info
+    ? (info.configFile.sourceDirs || (info.configFile.sourceDir ? [info.configFile.sourceDir] : []))
+    : [];
+
   // Detect unsaved changes
+  const currentDirs = editSourceDirs.filter(d => d.trim());
   const hasChanges = info ? (
-    editSourceDir !== (info.configFile.sourceDir || '') ||
+    JSON.stringify(currentDirs) !== JSON.stringify(initialSourceDirs) ||
     editDataDir !== (info.configFile.dataDir || '') ||
     editPort !== (info.configFile.port?.toString() || '') ||
     editSyncSec !== (info.configFile.syncIntervalMs ? String(info.configFile.syncIntervalMs / 1000) : '')
   ) : false;
+
+  function updateSourceDir(index: number, value: string) {
+    const next = [...editSourceDirs];
+    next[index] = value;
+    setEditSourceDirs(next);
+    setSaveResult(null);
+  }
+
+  function removeSourceDir(index: number) {
+    const next = editSourceDirs.filter((_, i) => i !== index);
+    setEditSourceDirs(next.length > 0 ? next : ['']);
+    setSaveResult(null);
+  }
+
+  function addSourceDir(value = '') {
+    setEditSourceDirs([...editSourceDirs, value]);
+    setSaveResult(null);
+  }
+
+  async function handleDetectSources() {
+    setDetecting(true);
+    try {
+      const res = await fetch('/api/settings/detect-sources');
+      const result: DetectSourcesResult = await res.json();
+      setDetectedSources(result);
+    } catch {
+      // detection failed silently
+    } finally {
+      setDetecting(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
     setSaveResult(null);
     try {
       const body: Record<string, any> = {};
-      body.sourceDir = editSourceDir.trim() || null;
+      const dirs = editSourceDirs.map(d => d.trim()).filter(Boolean);
+      body.sourceDirs = dirs.length > 0 ? dirs : null;
+      body.sourceDir = null; // clear legacy field
       body.dataDir = editDataDir.trim() || null;
       body.port = editPort.trim() ? parseInt(editPort, 10) : null;
       body.syncIntervalMs = editSyncSec.trim() ? Math.round(parseFloat(editSyncSec) * 1000) : null;
@@ -158,6 +209,11 @@ export default function Settings() {
       setSaving(false);
     }
   }
+
+  // Filter detected suggestions to exclude already-added dirs
+  const suggestions = detectedSources?.suggestions.filter(
+    s => !editSourceDirs.some(d => d.trim() === s)
+  ) || [];
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-8">
@@ -254,38 +310,127 @@ export default function Settings() {
           </code>
         </SettingRow>
 
-        {/* Source directory */}
-        <SettingRow label="Source directory" description="Where Claude Code stores session data (read-only source).">
-          <div className="flex flex-col items-end gap-1">
+        {/* Source directories */}
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Source directories</div>
+            <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              Where Claude Code stores session data. Add multiple to merge sources.
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5">
             {info?.envOverrides.sourceDir ? (
-              <div className="flex items-center gap-2">
-                <EnvBadge />
-                <code className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--color-surface-2)', color: 'var(--color-text-muted)' }}>
-                  {info.sourceDir}
-                </code>
-              </div>
+              <>
+                <div className="flex items-center gap-2">
+                  <EnvBadge />
+                </div>
+                {info.sourceDirs.map((dir, i) => (
+                  <code
+                    key={i}
+                    className="text-xs px-2 py-1 rounded"
+                    style={{ backgroundColor: 'var(--color-surface-2)', color: 'var(--color-text-muted)' }}
+                  >
+                    {dir}
+                  </code>
+                ))}
+              </>
             ) : (
-              <input
-                type="text"
-                value={editSourceDir}
-                onChange={e => { setEditSourceDir(e.target.value); setSaveResult(null); }}
-                placeholder={info?.sourceDir || '~/.claude'}
-                className="text-xs px-2 py-1.5 rounded w-64 font-mono outline-none"
-                style={saveResult?.errors?.sourceDir ? INPUT_ERROR_STYLE : INPUT_STYLE}
-              />
+              <>
+                {editSourceDirs.map((dir, i) => {
+                  const errorKey = `sourceDirs[${i}]`;
+                  const warningKey = `sourceDirs[${i}]`;
+                  return (
+                    <div key={i} className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={dir}
+                          onChange={e => updateSourceDir(i, e.target.value)}
+                          placeholder={i === 0 ? (info?.sourceDir || '~/.claude') : '/path/to/.claude'}
+                          className="text-xs px-2 py-1.5 rounded w-64 font-mono outline-none"
+                          style={saveResult?.errors?.[errorKey] ? INPUT_ERROR_STYLE : INPUT_STYLE}
+                        />
+                        {editSourceDirs.length > 1 && (
+                          <button
+                            onClick={() => removeSourceDir(i)}
+                            className="btn-ghost p-1 rounded"
+                            title="Remove source"
+                            style={{ color: 'var(--color-text-muted)' }}
+                          >
+                            <XIcon size={12} />
+                          </button>
+                        )}
+                      </div>
+                      {saveResult?.errors?.[errorKey] && (
+                        <span className="text-[11px]" style={{ color: 'var(--color-accent-rose)' }}>
+                          {saveResult.errors[errorKey]}
+                        </span>
+                      )}
+                      {saveResult?.warnings?.[warningKey] && (
+                        <span className="text-[11px]" style={{ color: 'var(--color-accent-amber)' }}>
+                          {saveResult.warnings[warningKey]}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => addSourceDir()}
+                    className="flex items-center gap-1 text-[11px] px-2 py-1 rounded btn-ghost"
+                    style={{ color: 'var(--color-primary)' }}
+                  >
+                    <PlusIcon size={11} />
+                    Add source
+                  </button>
+                  <button
+                    onClick={handleDetectSources}
+                    disabled={detecting}
+                    className="flex items-center gap-1 text-[11px] px-2 py-1 rounded btn-ghost"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    {detecting ? 'Detecting...' : 'Auto-detect'}
+                  </button>
+                </div>
+                {suggestions.length > 0 && (
+                  <div className="flex flex-col items-end gap-1 mt-1">
+                    <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                      Detected:
+                    </span>
+                    {suggestions.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => addSourceDir(s)}
+                        className="flex items-center gap-1 text-[11px] px-2 py-1 rounded"
+                        style={{
+                          backgroundColor: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
+                          color: 'var(--color-primary)',
+                          border: '1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)',
+                        }}
+                      >
+                        <PlusIcon size={10} />
+                        <code className="font-mono">{s}</code>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {detectedSources && suggestions.length === 0 && !detecting && (
+                  <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                    {detectedSources.isWSL
+                      ? 'No additional sources found on Windows side.'
+                      : 'Auto-detect is only available on WSL.'}
+                  </span>
+                )}
+              </>
             )}
+            {/* Legacy sourceDir errors (shouldn't appear normally) */}
             {saveResult?.errors?.sourceDir && (
               <span className="text-[11px]" style={{ color: 'var(--color-accent-rose)' }}>
                 {saveResult.errors.sourceDir}
               </span>
             )}
-            {saveResult?.warnings?.sourceDir && (
-              <span className="text-[11px]" style={{ color: 'var(--color-accent-amber)' }}>
-                {saveResult.warnings.sourceDir}
-              </span>
-            )}
           </div>
-        </SettingRow>
+        </div>
 
         {/* Data directory */}
         <SettingRow label="Data directory" description="Where clarc stores its synced copy of session data.">

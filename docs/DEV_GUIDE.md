@@ -241,12 +241,13 @@ ClArc/
 ├── src/
 │   ├── shared/                   # Shared across all layers
 │   │   ├── config.ts             # clarc.json config file I/O, validation, types
-│   │   ├── paths.ts              # Centralized path configuration (SOURCE_DIR, DATA_DIR, etc.)
+│   │   ├── paths.ts              # Centralized path configuration (SOURCE_DIRS, DATA_DIR, etc.)
 │   │   ├── types.ts              # All TypeScript interfaces (including sync types)
+│   │   ├── wsl-detect.ts         # WSL detection + Windows Claude dir auto-discovery
 │   │   └── pricing.ts            # Model pricing & cost estimation
 │   │
 │   ├── data/                     # Data access layer
-│   │   ├── sync.ts               # Sync engine: SOURCE_DIR → DATA_DIR (add-only copy)
+│   │   ├── sync.ts               # Multi-source sync engine: SOURCE_DIRS → DATA_DIR (add-only, merged)
 │   │   ├── sync-scheduler.ts     # Startup sync + periodic 5min sync timer
 │   │   ├── scanner.ts            # Project/session discovery + token extraction
 │   │   ├── parser.ts             # Session JSONL parsing + LRU cache
@@ -331,10 +332,11 @@ Handles reading, writing, and validating `clarc.json`. This is the foundation fo
 
 ```typescript
 interface ClarcConfig {
-  sourceDir?: string;   // Claude Code data directory
-  dataDir?: string;     // Synced data location
-  port?: number;        // Web server port
-  syncIntervalMs?: number; // Sync interval in ms
+  sourceDir?: string;       // Single source (backward compat)
+  sourceDirs?: string[];    // Multiple source directories
+  dataDir?: string;         // Synced data location
+  port?: number;            // Web server port
+  syncIntervalMs?: number;  // Sync interval in ms
 }
 
 getConfigFilePath(): string           // Resolve clarc.json path
@@ -345,7 +347,8 @@ writeConfig(config): Promise<void>
 ```
 
 **Validation rules:**
-- `sourceDir`: Must contain a `projects/` subdirectory (Claude Code profile marker)
+- `sourceDirs`: Each entry must contain a `projects/` subdirectory (Claude Code profile marker). Errors keyed as `sourceDirs[0]`, `sourceDirs[1]`, etc.
+- `sourceDir` (legacy): Same validation, only checked when `sourceDirs` is not set
 - `dataDir`: Must be writable (attempts mkdir + test file write/delete)
 - `port`: Integer 1–65535
 - `syncIntervalMs`: Integer >= 10000 (10 seconds minimum)
@@ -369,20 +372,17 @@ function parseIntOrUndefined(s: string | undefined): number | undefined {
 
 export const CONFIG_FILE = getConfigFilePath();
 
-// Resolution: env var ?? config file ?? default
-export const SOURCE_DIR = process.env.CLARC_CLAUDE_DIR ?? _config.sourceDir ?? join(homedir(), '.claude');
+// Source dirs: env var (colon-separated) > config sourceDirs > config sourceDir > default
+function resolveSourceDirs(): string[] { ... }  // deduplicates paths
+export const SOURCE_DIRS: string[] = resolveSourceDirs();
+export const SOURCE_DIR: string = SOURCE_DIRS[0];  // Backward compat
+
 export const CONFIG_DIR = process.env.CLARC_CONFIG_DIR || join(homedir(), '.config', 'clarc');
 export const PORT = parseIntOrUndefined(process.env.CLARC_PORT) ?? _config.port ?? 3838;
 export const SYNC_INTERVAL_MS = parseIntOrUndefined(process.env.CLARC_SYNC_INTERVAL_MS) ?? _config.syncIntervalMs ?? 300000;
 export const DATA_DIR = process.env.CLARC_DATA_DIR ?? _config.dataDir ?? getDefaultDataDir();
 
-function getDefaultDataDir(): string {
-  const execName = basename(process.execPath);
-  if (execName === 'clarc') {
-    return join(dirname(process.execPath), 'data');
-  }
-  return join(CONFIG_DIR, 'data');
-}
+function getDefaultDataDir(): string { ... }  // Tauri / compiled / dev mode
 
 // Derived paths — point to local data copy (populated by sync)
 export const PROJECTS_DIR = join(DATA_DIR, 'projects');
@@ -390,9 +390,8 @@ export const TODOS_DIR = join(DATA_DIR, 'todos');
 export const HISTORY_FILE = join(DATA_DIR, 'history.jsonl');
 export const STATS_FILE = join(DATA_DIR, 'stats-cache.json');
 export const SYNC_STATE_FILE = join(DATA_DIR, 'sync-state.json');
-export const CLAUDE_DIR = SOURCE_DIR;
 
-// These are NOT synced — always read from source
+// These are NOT synced — always read from primary source
 export const PLANS_DIR = join(SOURCE_DIR, 'plans');
 export const FILE_HISTORY_DIR = join(SOURCE_DIR, 'file-history');
 export const SETTINGS_FILE = join(SOURCE_DIR, 'settings.json');
@@ -447,10 +446,10 @@ Contains all TypeScript interfaces shared across layers. Key types:
 | `Analytics` | Stats, API | Computed analytics dashboard data |
 | `SearchResult` | Search, API | Search hit with snippet |
 | `TaskList` / `Task` | Tasks, API | Todo items |
-| `SyncState` | Sync | Persistent sync state (file inventory, counters) |
-| `SyncedFile` | Sync | Individual synced file record (mtime, size, syncedAt) |
+| `SyncState` | Sync | Persistent sync state v2 (sourceDirs, file inventory with sourceIndex, counters) |
+| `SyncedFile` | Sync | Individual synced file record (sourceIndex, mtime, size, syncedAt) |
 | `SyncError` | Sync | Error during sync (timestamp, path, message) |
-| `SyncStatus` | Sync, API | Current sync status (returned by API) |
+| `SyncStatus` | Sync, API | Current sync status (sourceDirs + sourceDir compat) |
 
 ### `src/shared/pricing.ts` — Cost Estimation
 
@@ -480,20 +479,22 @@ The data layer reads synced data from `DATA_DIR` (populated by sync from `~/.cla
 
 ### `src/data/sync.ts` — Sync Engine
 
-The sync engine is the foundation of v0.2's data architecture. It copies data from `SOURCE_DIR` (`~/.claude/`) to `DATA_DIR` (portable — see paths.ts section above), keeping a local read-write working copy.
+The sync engine is the foundation of v0.2's data architecture. It copies data from all `SOURCE_DIRS` to `DATA_DIR` (portable — see paths.ts section above), keeping a merged local read-write working copy.
 
 #### How it works
 
-1. An allowlist defines what to sync:
-   - `projects/` directory (`.jsonl` and `.txt` files — includes tool result caches)
-   - `todos/` directory (only `.json` files)
-   - `stats-cache.json` (single file)
-   - `history.jsonl` (single file)
-2. Walks each directory recursively, comparing `mtime` + `size` against the stored file inventory
-3. Only copies files that are new or have changed (mtime/size differ)
-4. **Never deletes** files from the working copy (add-only)
-5. Tracks all synced files in `sync-state.json` with per-file metadata
-6. Caps stored errors at 50
+1. Iterates each source directory in `SOURCE_DIRS` (index 0, 1, 2...).
+2. For each source, an allowlist defines what to sync:
+   - `projects/` directory (`.jsonl` and `.txt` files — flat-merged, no collisions due to path-encoded project IDs)
+   - `todos/` directory (only `.json` files — flat-merged)
+   - `stats-cache.json` (last-wins across sources)
+   - `history.jsonl` (copied per-source as `history-{N}.jsonl`, then merged with dedup by `sessionId:timestamp`)
+3. Walks each directory recursively, comparing `mtime` + `size` against the stored file inventory
+4. Only copies files that are new or have changed (mtime/size differ)
+5. **Never deletes** files from the working copy (add-only)
+6. Tracks all synced files in `sync-state.json` with per-file metadata. Inventory keys are prefixed with source index: `{sourceIndex}:{relativePath}`
+7. Caps stored errors at 50
+8. Auto-migrates v1 sync state (single `sourceDir`) to v2 (`sourceDirs` + prefixed inventory keys)
 
 #### Public API
 
@@ -515,7 +516,8 @@ needsInitialSync(): Promise<boolean>
   lastSyncAt: string | null;
   lastSyncDurationMs: number;
   syncCount: number;
-  sourceDir: string;
+  sourceDir: string;       // Compat: first source dir
+  sourceDirs: string[];    // All configured source directories
   totalFiles: number;
   totalSizeBytes: number;
   errors: SyncError[];
@@ -780,14 +782,17 @@ The response includes:
 | GET | `/api/settings/info` | Runtime info, config file contents, env override flags |
 | POST | `/api/settings/config` | Validate and save clarc.json config |
 | POST | `/api/reindex` | Sync (unless `?sync=false`) then re-scan data directory |
+| GET | `/api/settings/detect-sources` | Auto-detect Windows Claude dirs on WSL |
 
 **GET `/api/settings/info`** returns:
-- `sourceDir`, `dataDir`, `syncIntervalMs`, `port`, `version` — active runtime values
+- `sourceDir`, `sourceDirs`, `dataDir`, `syncIntervalMs`, `port`, `version` — active runtime values
 - `configFilePath` — path to `clarc.json`
-- `configFile` — current JSON contents of `clarc.json` (the persisted overrides)
+- `configFile` — current JSON contents of `clarc.json` (the persisted overrides, including `sourceDirs`)
 - `envOverrides` — `{ sourceDir, dataDir, port, syncIntervalMs }` booleans indicating which fields are locked by environment variables
 
-**POST `/api/settings/config`** accepts a partial config object. Sending `null` for a field removes it (reverts to default). Returns `{ saved, restartRequired, config, errors, warnings }`. When `syncIntervalMs` is changed, it hot-reloads the sync timer via `restartPeriodicSync()`. Returns `restartRequired: true` when sourceDir, dataDir, or port change.
+**POST `/api/settings/config`** accepts a partial config object. Sending `null` for a field removes it (reverts to default). Returns `{ saved, restartRequired, config, errors, warnings }`. When `syncIntervalMs` is changed, it hot-reloads the sync timer via `restartPeriodicSync()`. Returns `restartRequired: true` when sourceDirs, dataDir, or port change. When `sourceDirs` is set, the legacy `sourceDir` field is automatically cleared.
+
+**GET `/api/settings/detect-sources`** returns `{ detected, suggestions, isWSL }`. On WSL, scans `/mnt/c/Users/*/.claude/` for Windows-side Claude directories. `suggestions` filters out already-configured sources.
 
 ### Adding a New API Route
 

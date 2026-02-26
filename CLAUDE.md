@@ -74,7 +74,7 @@ The entry point (`src/cli/main.ts`) detects CLI commands vs server mode. If no r
 ### Environment variables
 | Variable | Default | Purpose |
 |---|---|---|
-| `CLARC_CLAUDE_DIR` | `~/.claude` | Source data directory |
+| `CLARC_CLAUDE_DIR` | `~/.claude` | Source data directory (colon-separated for multiple) |
 | `CLARC_DATA_DIR` | (computed) | Working data directory |
 | `CLARC_PORT` | `3838` | API server port |
 | `CLARC_SYNC_INTERVAL_MS` | `300000` | Sync interval (5 min) |

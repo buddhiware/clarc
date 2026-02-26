@@ -1,9 +1,9 @@
 import { readdir, stat, copyFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { join, dirname } from 'path';
-import { SOURCE_DIR, DATA_DIR, SYNC_STATE_FILE } from '../shared/paths';
+import { SOURCE_DIRS, DATA_DIR, SYNC_STATE_FILE } from '../shared/paths';
 import type { SyncState, SyncedFile, SyncError, SyncStatus } from '../shared/types';
 
-// Allowlist of what to sync from SOURCE_DIR
+// Allowlist of what to sync from each source directory
 const SYNC_TARGETS = [
   { type: 'dir' as const, rel: 'projects' },
   { type: 'dir' as const, rel: 'todos' },
@@ -23,13 +23,31 @@ let isSyncing = false;
 
 function freshState(): SyncState {
   return {
-    version: 1,
+    version: 2,
     lastSyncAt: '',
     lastSyncDurationMs: 0,
     syncCount: 0,
-    sourceDir: SOURCE_DIR,
+    sourceDirs: SOURCE_DIRS,
     fileInventory: {},
     errors: [],
+  };
+}
+
+/** Migrate v1 sync state to v2 (prefix inventory keys with source index) */
+function migrateV1toV2(v1: any): SyncState {
+  const newInventory: Record<string, SyncedFile> = {};
+  for (const [key, file] of Object.entries(v1.fileInventory || {})) {
+    const f = file as any;
+    newInventory[`0:${key}`] = { ...f, sourceIndex: 0 };
+  }
+  return {
+    version: 2,
+    lastSyncAt: v1.lastSyncAt || '',
+    lastSyncDurationMs: v1.lastSyncDurationMs || 0,
+    syncCount: v1.syncCount || 0,
+    sourceDirs: v1.sourceDir ? [v1.sourceDir] : SOURCE_DIRS,
+    fileInventory: newInventory,
+    errors: v1.errors || [],
   };
 }
 
@@ -37,7 +55,12 @@ async function loadSyncState(): Promise<SyncState> {
   if (syncState) return syncState;
   try {
     const text = await readFile(SYNC_STATE_FILE, 'utf-8');
-    syncState = JSON.parse(text) as SyncState;
+    const loaded = JSON.parse(text);
+    if (loaded.version === 1 || !loaded.version) {
+      syncState = migrateV1toV2(loaded);
+    } else {
+      syncState = loaded as SyncState;
+    }
     return syncState!;
   } catch {
     syncState = freshState();
@@ -67,21 +90,35 @@ export async function runSync(): Promise<SyncStatus> {
   try {
     await mkdir(DATA_DIR, { recursive: true });
 
-    for (const target of SYNC_TARGETS) {
-      const sourcePath = join(SOURCE_DIR, target.rel);
-      const destPath = join(DATA_DIR, target.rel);
+    for (let sourceIndex = 0; sourceIndex < SOURCE_DIRS.length; sourceIndex++) {
+      const sourceDir = SOURCE_DIRS[sourceIndex];
 
-      if (target.type === 'file') {
-        await syncSingleFile(sourcePath, destPath, target.rel, state);
-      } else {
-        await syncDirectory(sourcePath, destPath, target.rel, state);
+      for (const target of SYNC_TARGETS) {
+        const sourcePath = join(sourceDir, target.rel);
+
+        if (target.rel === 'history.jsonl') {
+          // Copy each source's history to a per-source file for later merge
+          const destPath = join(DATA_DIR, `history-${sourceIndex}.jsonl`);
+          await syncSingleFile(sourcePath, destPath, `history-${sourceIndex}.jsonl`, state, sourceIndex);
+        } else if (target.type === 'file') {
+          // stats-cache.json: last-wins (later source overwrites earlier)
+          const destPath = join(DATA_DIR, target.rel);
+          await syncSingleFile(sourcePath, destPath, target.rel, state, sourceIndex);
+        } else {
+          // directories: flat merge into same DATA_DIR tree
+          const destPath = join(DATA_DIR, target.rel);
+          await syncDirectory(sourcePath, destPath, target.rel, state, sourceIndex);
+        }
       }
     }
+
+    // Merge per-source history files into a single history.jsonl
+    await mergeHistoryFiles();
 
     state.lastSyncAt = new Date().toISOString();
     state.lastSyncDurationMs = Date.now() - startTime;
     state.syncCount++;
-    state.sourceDir = SOURCE_DIR;
+    state.sourceDirs = SOURCE_DIRS;
 
     // Cap errors at 50
     if (state.errors.length > 50) {
@@ -103,10 +140,12 @@ async function syncSingleFile(
   destPath: string,
   relativePath: string,
   state: SyncState,
+  sourceIndex: number,
 ): Promise<void> {
+  const inventoryKey = `${sourceIndex}:${relativePath}`;
   try {
     const srcStat = await stat(sourcePath);
-    const existing = state.fileInventory[relativePath];
+    const existing = state.fileInventory[inventoryKey];
 
     if (
       existing &&
@@ -119,8 +158,9 @@ async function syncSingleFile(
     await mkdir(dirname(destPath), { recursive: true });
     await copyFile(sourcePath, destPath);
 
-    state.fileInventory[relativePath] = {
+    state.fileInventory[inventoryKey] = {
       relativePath,
+      sourceIndex,
       sourceMtimeMs: srcStat.mtimeMs,
       sourceSizeBytes: srcStat.size,
       syncedAt: new Date().toISOString(),
@@ -130,7 +170,7 @@ async function syncSingleFile(
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       state.errors.push({
         timestamp: new Date().toISOString(),
-        relativePath,
+        relativePath: `[source ${sourceIndex}] ${relativePath}`,
         error: String(err),
       });
     }
@@ -142,14 +182,15 @@ async function syncDirectory(
   destPath: string,
   baseRel: string,
   state: SyncState,
+  sourceIndex: number,
 ): Promise<void> {
   try {
-    await walkAndSync(sourcePath, destPath, baseRel, state);
+    await walkAndSync(sourcePath, destPath, baseRel, state, sourceIndex);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       state.errors.push({
         timestamp: new Date().toISOString(),
-        relativePath: baseRel,
+        relativePath: `[source ${sourceIndex}] ${baseRel}`,
         error: String(err),
       });
     }
@@ -161,6 +202,7 @@ async function walkAndSync(
   destDir: string,
   relBase: string,
   state: SyncState,
+  sourceIndex: number,
 ): Promise<void> {
   let entries: string[];
   try {
@@ -176,14 +218,15 @@ async function walkAndSync(
     const srcPath = join(srcDir, entry);
     const destPath = join(destDir, entry);
     const relPath = join(relBase, entry);
+    const inventoryKey = `${sourceIndex}:${relPath}`;
 
     try {
       const entryStat = await stat(srcPath);
 
       if (entryStat.isDirectory()) {
-        await walkAndSync(srcPath, destPath, relPath, state);
+        await walkAndSync(srcPath, destPath, relPath, state, sourceIndex);
       } else if (entryStat.isFile() && filter(entry)) {
-        const existing = state.fileInventory[relPath];
+        const existing = state.fileInventory[inventoryKey];
         if (
           existing &&
           existing.sourceMtimeMs === entryStat.mtimeMs &&
@@ -195,8 +238,9 @@ async function walkAndSync(
         await mkdir(dirname(destPath), { recursive: true });
         await copyFile(srcPath, destPath);
 
-        state.fileInventory[relPath] = {
+        state.fileInventory[inventoryKey] = {
           relativePath: relPath,
+          sourceIndex,
           sourceMtimeMs: entryStat.mtimeMs,
           sourceSizeBytes: entryStat.size,
           syncedAt: new Date().toISOString(),
@@ -205,11 +249,53 @@ async function walkAndSync(
     } catch (err) {
       state.errors.push({
         timestamp: new Date().toISOString(),
-        relativePath: relPath,
+        relativePath: `[source ${sourceIndex}] ${relPath}`,
         error: String(err),
       });
     }
   }
+}
+
+/** Merge per-source history-N.jsonl files into a single history.jsonl */
+async function mergeHistoryFiles(): Promise<void> {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (let i = 0; i < SOURCE_DIRS.length; i++) {
+    const perSourceFile = join(DATA_DIR, `history-${i}.jsonl`);
+    try {
+      const text = await readFile(perSourceFile, 'utf-8');
+      for (const line of text.split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const obj = JSON.parse(line);
+          const key = `${obj.sessionId || ''}:${obj.timestamp || ''}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            lines.push(line);
+          }
+        } catch {
+          // skip malformed lines
+        }
+      }
+    } catch {
+      // per-source file may not exist
+    }
+  }
+
+  // Sort by timestamp descending
+  lines.sort((a, b) => {
+    try {
+      const ta = JSON.parse(a).timestamp || 0;
+      const tb = JSON.parse(b).timestamp || 0;
+      return tb - ta;
+    } catch {
+      return 0;
+    }
+  });
+
+  const mergedPath = join(DATA_DIR, 'history.jsonl');
+  await writeFile(mergedPath, lines.length > 0 ? lines.join('\n') + '\n' : '');
 }
 
 // ────────────────────────────────────────────
@@ -223,7 +309,8 @@ export function getSyncStatus(): SyncStatus {
     lastSyncAt: state.lastSyncAt || null,
     lastSyncDurationMs: state.lastSyncDurationMs,
     syncCount: state.syncCount,
-    sourceDir: state.sourceDir,
+    sourceDir: state.sourceDirs[0] || '',
+    sourceDirs: state.sourceDirs,
     totalFiles: files.length,
     totalSizeBytes: files.reduce((sum, f) => sum + f.sourceSizeBytes, 0),
     errors: state.errors,

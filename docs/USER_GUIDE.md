@@ -428,7 +428,7 @@ The Settings page (`/settings`) lets you configure your clarc experience. Access
 Editable configuration saved to `clarc.json`:
 
 - **Config file** -- Read-only display of the path to `clarc.json` on the server
-- **Source directory** -- Where Claude Code stores session data. Validates that the path contains a `projects/` subdirectory.
+- **Source directories** -- Where Claude Code stores session data. Supports multiple sources (e.g., WSL + Windows) — click "Add source" to add paths, or "Auto-detect" to find Windows-side directories on WSL. Each path must contain a `projects/` subdirectory. Changes require a restart.
 - **Data directory** -- Where clarc stores its synced copy. Validates that the path is writable.
 - **Server port** -- The port clarc listens on (1–65535). Requires restart after change.
 - **Sync interval** -- How often clarc checks for new data, in seconds (minimum 10s). Takes effect immediately without restart.
@@ -456,10 +456,11 @@ clarc maintains a local copy of your Claude Code data to ensure safe, read-only 
 
 ### How It Works
 
-- At **startup**, clarc syncs files from `~/.claude/` to `~/.config/clarc/data/`
+- At **startup**, clarc syncs files from all configured source directories to `~/.config/clarc/data/`
 - The sync runs again automatically **every 5 minutes**
 - The sync is **add-only** -- it copies new and updated files but never deletes files from the local copy, even if they are removed from the source
-- The scanner and parser read exclusively from the local copy at `~/.config/clarc/data/`, never from `~/.claude/` directly
+- **Multiple sources** are flat-merged: project directories and sessions from all sources appear in a unified list. `history.jsonl` files are merged with deduplication. `stats-cache.json` uses last-wins.
+- The scanner and parser read exclusively from the merged local copy, never from source directories directly
 
 ### Manual Sync
 
@@ -599,14 +600,14 @@ The simplest way to configure clarc. Edit via the Settings page in the web UI, o
 **Supported fields:**
 ```json
 {
-  "sourceDir": "/path/to/.claude",
+  "sourceDirs": ["/home/user/.claude", "/mnt/c/Users/user/.claude"],
   "dataDir": "/path/to/data",
   "port": 3838,
   "syncIntervalMs": 300000
 }
 ```
 
-All fields are optional — omit a field to use the default. The Settings page validates values before saving (e.g., sourceDir must be a Claude Code profile directory, dataDir must be writable, port must be 1–65535, syncIntervalMs must be >= 10000).
+All fields are optional — omit a field to use the default. `sourceDirs` is an array of Claude Code data directories to sync from (the legacy `sourceDir` string field is still supported for backward compatibility). The Settings page validates values before saving (e.g., each source dir must contain a `projects/` subdirectory, dataDir must be writable, port must be 1–65535, syncIntervalMs must be >= 10000).
 
 ### Environment Variables
 
@@ -614,7 +615,7 @@ Environment variables take priority over `clarc.json` values. When set, the corr
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLARC_CLAUDE_DIR` | `~/.claude` | Path to Claude Code data directory |
+| `CLARC_CLAUDE_DIR` | `~/.claude` | Path to Claude Code data directory (colon-separated for multiple, e.g., `/path1:/path2`) |
 | `CLARC_CONFIG_DIR` | `~/.config/clarc` | Path to clarc's own config directory |
 | `CLARC_DATA_DIR` | *(auto)* | Override synced data location (see below) |
 | `CLARC_PORT` | `3838` | Web server port |
@@ -768,14 +769,23 @@ The Context Panel is a side panel that slides in from the right side of the scre
 
 ### How does data sync work?
 
-clarc copies files from `~/.claude/` to its local data directory at startup and every 5 minutes. When running the compiled binary, data lives in `data/` next to the binary; in dev mode, it's in `~/.config/clarc/data/`; or set `CLARC_DATA_DIR` to override. The sync is add-only -- new and updated files are copied, but files are never deleted from the local copy. The scanner and parser read exclusively from this local copy. You can trigger a manual sync with `POST /api/sync`, or run a reindex (`POST /api/reindex`) which automatically syncs first.
+clarc copies files from all configured source directories to its local data directory at startup and every 5 minutes. When running the compiled binary, data lives in `data/` next to the binary; in dev mode, it's in `~/.config/clarc/data/`; or set `CLARC_DATA_DIR` to override. The sync is add-only -- new and updated files are copied, but files are never deleted from the local copy. Projects and sessions from multiple sources are flat-merged (project IDs are path-encoded, so no collisions). Prompt history (`history.jsonl`) from each source is merged with deduplication. The scanner and parser read exclusively from this merged local copy. You can trigger a manual sync with `POST /api/sync`, or run a reindex (`POST /api/reindex`) which automatically syncs first.
 
 ### Can I use clarc with multiple Claude Code installations?
 
-Yes. Point `CLARC_CLAUDE_DIR` to any Claude Code data directory:
+Yes. Add multiple source directories in the Settings page, or use a colon-separated `CLARC_CLAUDE_DIR` environment variable:
 
 ```bash
-CLARC_CLAUDE_DIR=/other/path/.claude clarc
+# WSL + Windows Claude on same machine
+CLARC_CLAUDE_DIR=~/.claude:/mnt/c/Users/yourname/.claude clarc
+```
+
+On WSL, the Settings page can auto-detect Windows-side `.claude` directories. You can also set `sourceDirs` as an array in `clarc.json`:
+
+```json
+{
+  "sourceDirs": ["~/.claude", "/mnt/c/Users/yourname/.claude"]
+}
 ```
 
 ### How do I refresh the data?

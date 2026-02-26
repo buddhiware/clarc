@@ -15,9 +15,24 @@ function parseIntOrUndefined(s: string | undefined): number | undefined {
 // Export config file location for settings UI
 export const CONFIG_FILE = getConfigFilePath();
 
-// Source directory (where Claude Code writes data — read-only)
-// Priority: env var > config file > default
-export const SOURCE_DIR = process.env.CLARC_CLAUDE_DIR ?? _config.sourceDir ?? join(homedir(), '.claude');
+// Source directories (where Claude Code writes data — read-only)
+// Priority: env var (colon-separated) > config sourceDirs > config sourceDir > default
+function resolveSourceDirs(): string[] {
+  const envVal = process.env.CLARC_CLAUDE_DIR;
+  if (envVal) {
+    return [...new Set(envVal.split(':').map(s => s.trim()).filter(Boolean))];
+  }
+  if (_config.sourceDirs && _config.sourceDirs.length > 0) {
+    return [...new Set(_config.sourceDirs)];
+  }
+  if (_config.sourceDir) {
+    return [_config.sourceDir];
+  }
+  return [join(homedir(), '.claude')];
+}
+
+export const SOURCE_DIRS: string[] = resolveSourceDirs();
+export const SOURCE_DIR: string = SOURCE_DIRS[0];
 
 // clarc's own config directory
 export const CONFIG_DIR = process.env.CLARC_CONFIG_DIR || join(homedir(), '.config', 'clarc');
@@ -57,10 +72,7 @@ export const STATS_FILE = join(DATA_DIR, 'stats-cache.json');
 // Sync state file — lives inside DATA_DIR so it travels with the data
 export const SYNC_STATE_FILE = join(DATA_DIR, 'sync-state.json');
 
-// Legacy alias — some existing code references CLAUDE_DIR
-export const CLAUDE_DIR = SOURCE_DIR;
-
-// These are NOT synced — always read from source
+// These are NOT synced — always read from primary source
 export const PLANS_DIR = join(SOURCE_DIR, 'plans');
 export const FILE_HISTORY_DIR = join(SOURCE_DIR, 'file-history');
 export const SETTINGS_FILE = join(SOURCE_DIR, 'settings.json');
