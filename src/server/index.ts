@@ -29,20 +29,24 @@ app.route('/api/sync', syncRoute);
 app.route('/api', systemRoute);
 
 // Serve static files from dist/ (production build)
-app.use('/*', serveStatic({ root: './dist' }));
+// CLARC_DIST_DIR is set by the Tauri sidecar to the bundled resource path
+const distRoot = process.env.CLARC_DIST_DIR || './dist';
+app.use('/*', serveStatic({ root: distRoot }));
 
 // SPA fallback
-app.get('/*', serveStatic({ root: './dist', path: 'index.html' }));
+app.get('/*', serveStatic({ root: distRoot, path: 'index.html' }));
 
 // Run initial sync, then start periodic sync
 await initSync();
 startPeriodicSync();
 
-console.log(`clarc server listening on http://0.0.0.0:${PORT}`);
-// Readiness signal for Tauri sidecar — do not change this format
-console.log(`__CLARC_READY__ http://localhost:${PORT}`);
-
-export default {
+// Start the HTTP server explicitly so we can confirm it's listening
+// before emitting the readiness signal for Tauri
+const server = Bun.serve({
   port: PORT,
   fetch: app.fetch,
-};
+});
+
+console.log(`clarc server listening on http://0.0.0.0:${server.port}`);
+// Readiness signal for Tauri sidecar — do not change this format
+console.log(`__CLARC_READY__ http://localhost:${server.port}`);

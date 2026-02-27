@@ -710,7 +710,8 @@ app.get('/*', serveStatic(...));    // SPA fallback
 await initSync();
 startPeriodicSync();
 
-export default { port: PORT, fetch: app.fetch };  // Bun serve
+const server = Bun.serve({ port: PORT, fetch: app.fetch });
+// __CLARC_READY__ signal emitted after server is confirmed listening
 ```
 
 ### Complete API Reference
@@ -1414,9 +1415,10 @@ Tauri App Shell (Rust)
     └── Session parser
 ```
 
-- The Rust shell finds a free port via `portpicker`, spawns `clarc-core --port N` with `CLARC_APP_DATA` env var
-- The sidecar prints `__CLARC_READY__ http://localhost:PORT` on stdout when ready
+- The Rust shell finds a free port via `portpicker`, spawns `clarc-core --port N` with `CLARC_APP_DATA` and `CLARC_DIST_DIR` env vars
+- The sidecar uses `Bun.serve()` to bind the port, then prints `__CLARC_READY__ http://localhost:PORT` on stdout
 - The Rust code watches for this signal and navigates the webview to the sidecar URL
+- Frontend files (`dist/`) are bundled as Tauri resources and located via `CLARC_DIST_DIR`
 - System tray with Show/Quit menu; sidecar is killed on window close or quit
 - In dev mode (`make tauri-dev`), the webview loads from Vite HMR at `localhost:5173`
 

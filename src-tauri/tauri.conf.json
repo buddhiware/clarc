@@ -38,7 +38,10 @@
     ],
     "externalBin": [
       "binaries/clarc-core"
-    ]
+    ],
+    "resources": {
+      "../dist": "dist"
+    }
   },
   "plugins": {
     "shell": {

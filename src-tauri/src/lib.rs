@@ -29,6 +29,14 @@ pub fn run() {
                 .expect("failed to resolve app data dir");
             let app_data_str = app_data_dir.to_string_lossy().to_string();
 
+            // Resolve resource directory so the sidecar can serve the frontend
+            let resource_dir = app
+                .path()
+                .resource_dir()
+                .expect("failed to resolve resource dir");
+            let dist_dir = resource_dir.join("dist");
+            let dist_dir_str = dist_dir.to_string_lossy().to_string();
+
             // Try to spawn the clarc-core sidecar.
             // In dev mode (tauri dev), the sidecar binary may not exist — that's OK
             // because beforeDevCommand starts the server directly.
@@ -39,7 +47,8 @@ pub fn run() {
                 Ok(cmd) => {
                     let sidecar = cmd
                         .args(["serve", "--port", &port.to_string()])
-                        .env("CLARC_APP_DATA", &app_data_str);
+                        .env("CLARC_APP_DATA", &app_data_str)
+                        .env("CLARC_DIST_DIR", &dist_dir_str);
 
                     match sidecar.spawn() {
                         Ok((mut rx, child)) => {
