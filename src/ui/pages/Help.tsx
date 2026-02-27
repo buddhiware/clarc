@@ -309,6 +309,12 @@ export default function Help() {
             <strong style={{ color: 'var(--color-text)' }}>Data info</strong> — View and manage your source directories (supports multiple),
             data directory, sync interval, and server port. On WSL, use "Auto-detect" to find Windows-side Claude directories.
           </li>
+          <li>
+            <strong style={{ color: 'var(--color-text)' }}>Project groups</strong> — Manually merge projects that refer to
+            the same codebase under a single display name. Worktree directories (e.g., from{' '}
+            <code>.claude/worktrees/</code>) are merged automatically. For other cases (project moved,
+            opened from different subdirectories), create a group in Settings to combine them.
+          </li>
         </ul>
         <P>
           All settings are stored in your browser's localStorage and persist across sessions.

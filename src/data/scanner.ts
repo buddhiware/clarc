@@ -5,6 +5,7 @@ import type { ClarcIndex, Project, SessionRef, AgentRef, TaskList, GlobalStats, 
 import { parseTodoFile } from './tasks';
 import { readStatsCache } from './stats';
 import { estimateCost } from '../shared/pricing';
+import { readConfigSync } from '../shared/config';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -53,12 +54,15 @@ function decodeProjectPath(encoded: string): string {
  * WSL form to the Windows drive-letter form so they merge as one project.
  */
 function normalizeProjectId(encoded: string): string {
-  // Match WSL mount pattern: -mnt-X-rest  where X is a single drive letter
-  const wslMatch = encoded.match(/^-mnt-([a-zA-Z])-(.+)$/);
+  // Strip worktree suffix: ...--claude-worktrees-friendly-kalam → parent project
+  let normalized = encoded.replace(/--claude-worktrees-[a-zA-Z]+-[a-zA-Z]+$/, '');
+
+  // WSL → Windows drive letter: -mnt-e-foo → E--foo
+  const wslMatch = normalized.match(/^-mnt-([a-zA-Z])-(.+)$/);
   if (wslMatch) {
     return `${wslMatch[1].toUpperCase()}--${wslMatch[2]}`;
   }
-  return encoded;
+  return normalized;
 }
 
 function extractProjectName(encoded: string): string {
@@ -78,8 +82,7 @@ async function scanProjects(): Promise<Project[]> {
     return [];
   }
 
-  // Group directories by normalized ID to unify WSL/Windows encodings
-  // e.g., -mnt-e-foo and E--foo both normalize to E--foo
+  // Phase 1: Group directories by normalized ID (auto: WSL paths + worktree suffixes)
   const groups = new Map<string, string[]>();
 
   for (const dirName of projectDirs) {
@@ -96,6 +99,29 @@ async function scanProjects(): Promise<Project[]> {
     }
   }
 
+  // Phase 2: Apply manual project groups from config
+  const config = readConfigSync();
+  if (config.projectGroups) {
+    for (const [displayName, memberIds] of Object.entries(config.projectGroups)) {
+      const matchedDirs: string[] = [];
+      for (const memberId of memberIds) {
+        if (groups.has(memberId)) {
+          matchedDirs.push(...groups.get(memberId)!);
+          groups.delete(memberId);
+        }
+      }
+      if (matchedDirs.length > 0) {
+        // Merge into existing group if display name already exists, else create new
+        if (groups.has(displayName)) {
+          groups.get(displayName)!.push(...matchedDirs);
+        } else {
+          groups.set(displayName, matchedDirs);
+        }
+      }
+    }
+  }
+
+  // Phase 3: Scan each group
   for (const [canonicalId, dirNames] of groups) {
     try {
       if (dirNames.length === 1) {

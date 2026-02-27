@@ -432,6 +432,7 @@ Editable configuration saved to `clarc.json`:
 - **Data directory** -- Where clarc stores its synced copy. Validates that the path is writable.
 - **Server port** -- The port clarc listens on (1–65535). Requires restart after change.
 - **Sync interval** -- How often clarc checks for new data, in seconds (minimum 10s). Takes effect immediately without restart.
+- **Project groups** -- Manually merge projects that refer to the same codebase under a single display name. Click "Create group" to name the group and select which projects to include. Grouped projects appear as one entry in the sidebar with all sessions combined. Click "Ungroup" to dissolve a group. Worktree directories are merged automatically and don't need manual grouping. Changes require a restart.
 
 When a field is overridden by an environment variable, it shows an amber **env** badge and becomes read-only. A **Save** button appears when you have unsaved changes. After saving:
 - Changes to source directory, data directory, or port show an amber "restart required" banner
@@ -604,11 +605,14 @@ The simplest way to configure clarc. Edit via the Settings page in the web UI, o
   "sourceDirs": ["/home/user/.claude", "/mnt/c/Users/user/.claude"],
   "dataDir": "/path/to/data",
   "port": 3838,
-  "syncIntervalMs": 300000
+  "syncIntervalMs": 300000,
+  "projectGroups": {
+    "MyProject": ["E--path-to-MyProject", "E--other-path-to-MyProject"]
+  }
 }
 ```
 
-All fields are optional — omit a field to use the default. `sourceDirs` is an array of Claude Code data directories to sync from (the legacy `sourceDir` string field is still supported for backward compatibility). The Settings page validates values before saving (e.g., each source dir must contain a `projects/` subdirectory, dataDir must be writable, port must be 1–65535, syncIntervalMs must be >= 10000).
+All fields are optional — omit a field to use the default. `sourceDirs` is an array of Claude Code data directories to sync from (the legacy `sourceDir` string field is still supported for backward compatibility). `projectGroups` maps a display name to a list of project IDs to merge together. The Settings page validates values before saving (e.g., each source dir must contain a `projects/` subdirectory, dataDir must be writable, port must be 1–65535, syncIntervalMs must be >= 10000).
 
 ### Environment Variables
 

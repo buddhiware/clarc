@@ -17,6 +17,7 @@ interface RuntimeInfo {
     dataDir?: string;
     port?: number;
     syncIntervalMs?: number;
+    projectGroups?: Record<string, string[]>;
   };
   envOverrides: {
     sourceDir: boolean;
@@ -124,6 +125,14 @@ export default function Settings() {
   const [detectedSources, setDetectedSources] = useState<DetectSourcesResult | null>(null);
   const [detecting, setDetecting] = useState(false);
 
+  // Project groups state
+  const [editProjectGroups, setEditProjectGroups] = useState<Record<string, string[]>>({});
+  const [editingGroup, setEditingGroup] = useState<{
+    name: string;
+    memberIds: string[];
+    originalName?: string; // set when editing existing group, undefined when creating new
+  } | null>(null);
+
   // Initialize edit fields from server config file contents
   useEffect(() => {
     if (info) {
@@ -133,6 +142,7 @@ export default function Settings() {
       setEditDataDir(info.configFile.dataDir || '');
       setEditPort(info.configFile.port?.toString() || '');
       setEditSyncSec(info.configFile.syncIntervalMs ? String(info.configFile.syncIntervalMs / 1000) : '');
+      setEditProjectGroups(info.configFile.projectGroups || {});
     }
   }, [info]);
 
@@ -143,11 +153,13 @@ export default function Settings() {
 
   // Detect unsaved changes
   const currentDirs = editSourceDirs.filter(d => d.trim());
+  const initialProjectGroups = info?.configFile.projectGroups || {};
   const hasChanges = info ? (
     JSON.stringify(currentDirs) !== JSON.stringify(initialSourceDirs) ||
     editDataDir !== (info.configFile.dataDir || '') ||
     editPort !== (info.configFile.port?.toString() || '') ||
-    editSyncSec !== (info.configFile.syncIntervalMs ? String(info.configFile.syncIntervalMs / 1000) : '')
+    editSyncSec !== (info.configFile.syncIntervalMs ? String(info.configFile.syncIntervalMs / 1000) : '') ||
+    JSON.stringify(editProjectGroups) !== JSON.stringify(initialProjectGroups)
   ) : false;
 
   function updateSourceDir(index: number, value: string) {
@@ -192,6 +204,7 @@ export default function Settings() {
       body.dataDir = editDataDir.trim() || null;
       body.port = editPort.trim() ? parseInt(editPort, 10) : null;
       body.syncIntervalMs = editSyncSec.trim() ? Math.round(parseFloat(editSyncSec) * 1000) : null;
+      body.projectGroups = Object.keys(editProjectGroups).length > 0 ? editProjectGroups : null;
 
       const res = await fetch('/api/settings/config', {
         method: 'POST',
@@ -519,6 +532,176 @@ export default function Settings() {
             )}
           </div>
         </SettingRow>
+
+        {/* Project Groups */}
+        <div>
+          <div className="text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>Project groups</div>
+          <div className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
+            Merge projects that refer to the same codebase under one name. Worktrees are grouped automatically.
+          </div>
+
+          {/* Existing groups */}
+          {Object.keys(editProjectGroups).length > 0 && (
+            <div className="space-y-2 mb-3">
+              {Object.entries(editProjectGroups).map(([groupName, memberIds]) => (
+                <div
+                  key={groupName}
+                  className="px-3 py-2.5 rounded-lg"
+                  style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                      {groupName}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingGroup({ name: groupName, memberIds: [...memberIds], originalName: groupName })}
+                        className="text-[11px] px-2 py-1 rounded btn-ghost"
+                        style={{ color: 'var(--color-primary)' }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          const next = { ...editProjectGroups };
+                          delete next[groupName];
+                          setEditProjectGroups(next);
+                          setSaveResult(null);
+                        }}
+                        className="text-[11px] px-2 py-1 rounded btn-ghost"
+                        style={{ color: 'var(--color-accent-rose)' }}
+                      >
+                        Ungroup
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    {memberIds.map(id => {
+                      const proj = projects?.find(p => p.id === id);
+                      return (
+                        <div key={id} className="text-[11px] font-mono truncate" style={{ color: 'var(--color-text-muted)' }}>
+                          &bull; {proj?.name || id}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Create/Edit group form */}
+          {editingGroup ? (
+            <div
+              className="px-3 py-3 rounded-lg mb-3 space-y-3"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-primary)', borderStyle: 'dashed' }}
+            >
+              <div>
+                <label className="text-[11px] font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                  Group name
+                </label>
+                <input
+                  type="text"
+                  value={editingGroup.name}
+                  onChange={e => setEditingGroup({ ...editingGroup, name: e.target.value })}
+                  placeholder="e.g., MyProject"
+                  className="text-xs px-2 py-1.5 rounded w-full font-mono outline-none"
+                  style={INPUT_STYLE}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                  Select projects to group
+                </label>
+                <div
+                  className="max-h-48 overflow-y-auto rounded space-y-0.5 p-1.5"
+                  style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
+                >
+                  {(projects || [])
+                    .filter(p => {
+                      // Show projects not in another group (unless they're in THIS group being edited)
+                      for (const [gName, gIds] of Object.entries(editProjectGroups)) {
+                        if (gName === editingGroup.originalName) continue;
+                        if (gIds.includes(p.id)) return false;
+                      }
+                      return true;
+                    })
+                    .map(p => {
+                      const checked = editingGroup.memberIds.includes(p.id);
+                      return (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-xs"
+                          style={{ color: 'var(--color-text)' }}
+                          onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface-3)')}
+                          onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const ids = checked
+                                ? editingGroup.memberIds.filter(id => id !== p.id)
+                                : [...editingGroup.memberIds, p.id];
+                              setEditingGroup({ ...editingGroup, memberIds: ids });
+                            }}
+                            style={{ accentColor: 'var(--color-primary)' }}
+                          />
+                          <span className="truncate font-medium">{p.name}</span>
+                          <span className="text-[10px] ml-auto flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+                            {p.sessionCount} sessions
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setEditingGroup(null)}
+                  className="text-[11px] px-3 py-1.5 rounded btn-ghost"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const name = editingGroup.name.trim();
+                    if (!name || editingGroup.memberIds.length === 0) return;
+                    const next = { ...editProjectGroups };
+                    // Remove old name if renaming
+                    if (editingGroup.originalName && editingGroup.originalName !== name) {
+                      delete next[editingGroup.originalName];
+                    }
+                    next[name] = editingGroup.memberIds;
+                    setEditProjectGroups(next);
+                    setEditingGroup(null);
+                    setSaveResult(null);
+                  }}
+                  disabled={!editingGroup.name.trim() || editingGroup.memberIds.length === 0}
+                  className="text-[11px] font-medium px-3 py-1.5 rounded-lg cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--color-primary)',
+                    color: '#fff',
+                    opacity: (!editingGroup.name.trim() || editingGroup.memberIds.length === 0) ? 0.5 : 1,
+                  }}
+                >
+                  {editingGroup.originalName ? 'Update Group' : 'Create Group'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditingGroup({ name: '', memberIds: [] })}
+              className="flex items-center gap-1 text-[11px] px-2 py-1 rounded btn-ghost"
+              style={{ color: 'var(--color-primary)' }}
+            >
+              <PlusIcon size={11} />
+              Create group
+            </button>
+          )}
+        </div>
 
         {/* Save button */}
         {hasChanges && (

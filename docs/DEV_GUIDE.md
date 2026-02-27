@@ -349,6 +349,7 @@ interface ClarcConfig {
   dataDir?: string;         // Synced data location
   port?: number;            // Web server port
   syncIntervalMs?: number;  // Sync interval in ms
+  projectGroups?: Record<string, string[]>;  // displayName → [projectId, ...]
 }
 
 getConfigFilePath(): string           // Resolve clarc.json path
@@ -568,9 +569,12 @@ restartPeriodicSync(intervalMs: number): void
 #### How it works
 
 1. Lists directories in `${PROJECTS_DIR}` (which is `DATA_DIR/projects/`, populated by sync)
-2. **Normalizes project IDs** to unify WSL and Windows path encodings. Claude Code encodes the working directory as the project folder name: WSL encodes `/mnt/e/foo` as `-mnt-e-foo`, while Windows encodes `E:\foo` as `E--foo`. The `normalizeProjectId()` function converts WSL form to drive-letter form so both resolve to `E--foo`.
-3. **Groups directories** by normalized ID. When multiple directories map to the same canonical ID (e.g., sessions from WSL terminal and Windows Claude Desktop for the same project), `scanMergedProject()` merges their sessions, agents, and tasks into a single `Project`, deduplicating sessions by UUID.
-4. For each project directory:
+2. **Normalizes project IDs** via `normalizeProjectId()`:
+   - **Worktree stripping**: Removes `--claude-worktrees-{name}` suffixes so worktree directories merge with their parent project automatically.
+   - **WSL/Windows normalization**: Converts WSL path encoding (`-mnt-e-foo`) to Windows drive-letter form (`E--foo`) so both refer to the same project.
+3. **Groups directories** by normalized ID. When multiple directories map to the same canonical ID, `scanMergedProject()` merges their sessions, agents, and tasks into a single `Project`, deduplicating sessions by UUID.
+4. **Applies manual project groups** from `clarc.json` `projectGroups` config. Each group maps a display name to a list of project IDs. Matching projects are consumed from the auto-normalized map and merged under the group's display name.
+5. For each project directory:
    - Finds `*.jsonl` files (sessions)
    - Reads first 20 lines of each for metadata (slug, model, git branch, summary)
    - Scans **all** assistant messages for token usage (input, output, cache read, cache create)

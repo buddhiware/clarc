@@ -9,6 +9,7 @@ export interface ClarcConfig {
   dataDir?: string;
   port?: number;
   syncIntervalMs?: number;
+  projectGroups?: Record<string, string[]>;  // displayName → [projectId, ...]
 }
 
 export interface ConfigValidationResult {
@@ -44,6 +45,16 @@ function pickKnownFields(parsed: any): ClarcConfig {
   if (typeof parsed.dataDir === 'string') config.dataDir = parsed.dataDir;
   if (typeof parsed.port === 'number') config.port = parsed.port;
   if (typeof parsed.syncIntervalMs === 'number') config.syncIntervalMs = parsed.syncIntervalMs;
+  if (parsed.projectGroups && typeof parsed.projectGroups === 'object' && !Array.isArray(parsed.projectGroups)) {
+    const groups: Record<string, string[]> = {};
+    for (const [name, ids] of Object.entries(parsed.projectGroups)) {
+      if (Array.isArray(ids)) {
+        const valid = (ids as any[]).filter((s: any) => typeof s === 'string' && s.trim());
+        if (valid.length > 0) groups[name] = valid;
+      }
+    }
+    if (Object.keys(groups).length > 0) config.projectGroups = groups;
+  }
   return config;
 }
 
@@ -129,6 +140,29 @@ export async function validateConfig(config: ClarcConfig): Promise<ConfigValidat
   if (config.syncIntervalMs !== undefined) {
     if (!Number.isInteger(config.syncIntervalMs) || config.syncIntervalMs < 10000) {
       errors.syncIntervalMs = 'Must be at least 10 seconds';
+    }
+  }
+
+  // projectGroups: validate group names and member IDs
+  if (config.projectGroups) {
+    const allMembers = new Set<string>();
+    for (const [name, memberIds] of Object.entries(config.projectGroups)) {
+      const key = `projectGroups.${name}`;
+      if (!name.trim()) {
+        errors[key] = 'Group name cannot be empty';
+        continue;
+      }
+      if (memberIds.length === 0) {
+        errors[key] = 'Group must have at least one project';
+        continue;
+      }
+      // Warn about overlapping membership
+      for (const id of memberIds) {
+        if (allMembers.has(id)) {
+          warnings[key] = `Project "${id}" appears in multiple groups — first group wins`;
+        }
+        allMembers.add(id);
+      }
     }
   }
 

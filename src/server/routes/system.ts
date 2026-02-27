@@ -85,6 +85,7 @@ app.post('/settings/config', async (c) => {
   if ('dataDir' in body) merged.dataDir = body.dataDir ?? undefined;
   if ('port' in body) merged.port = body.port ?? undefined;
   if ('syncIntervalMs' in body) merged.syncIntervalMs = body.syncIntervalMs ?? undefined;
+  if ('projectGroups' in body) merged.projectGroups = body.projectGroups ?? undefined;
 
   // If sourceDirs is set, clear legacy sourceDir to avoid confusion
   if (merged.sourceDirs && merged.sourceDirs.length > 0) {
@@ -98,6 +99,7 @@ app.post('/settings/config', async (c) => {
   if (merged.dataDir !== undefined) clean.dataDir = merged.dataDir;
   if (merged.port !== undefined) clean.port = merged.port;
   if (merged.syncIntervalMs !== undefined) clean.syncIntervalMs = merged.syncIntervalMs;
+  if (merged.projectGroups !== undefined) clean.projectGroups = merged.projectGroups;
 
   // Validate
   const result = await validateConfig(clean);
@@ -118,7 +120,8 @@ app.post('/settings/config', async (c) => {
     ('sourceDirs' in body) ||
     ('sourceDir' in body && body.sourceDir !== (existing.sourceDir ?? null)) ||
     ('dataDir' in body && body.dataDir !== (existing.dataDir ?? null)) ||
-    ('port' in body && body.port !== (existing.port ?? null));
+    ('port' in body && body.port !== (existing.port ?? null)) ||
+    ('projectGroups' in body);
 
   return c.json({ saved: true, config: clean, restartRequired, ...result });
 });
