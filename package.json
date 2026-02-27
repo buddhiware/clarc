@@ -1,6 +1,6 @@
 {
   "name": "clarc",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "clarc — browse, search, and analyze your Claude Code history",
   "type": "module",
   "scripts": {
